@@ -1,0 +1,16 @@
+---
+- hosts: cluster
+  become: true
+  become_method: sudo
+  gather_facts: no
+  tasks:
+   - name: Checking for updates
+     apt: update_cache=yes
+   - name: Upgrading system apps
+     apt: upgrade=dist
+   - name: Checking if a reboot is required
+     register: file
+     stat: path=/var/run/reboot-required get_md5=no
+   - name: Rebooting the cluster (if necessary)
+     command: /sbin/reboot
+     when: file.stat.exists == true

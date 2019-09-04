@@ -1,0 +1,14 @@
+---
+- hosts: cluster
+  become: true
+  become_method: sudo
+  gather_facts: no
+  tasks:
+    - name: Installing sysbench
+      apt: pkg=sysbench state=present update_cache=true
+    - name: Running a 5m stress test
+      command: sysbench --max-time=300 --test=cpu --cpu-max-prime=200000 --num-threads=8 run
+    - name: Getting Pi cluster temperatures
+      script: /home/jonfairbanks/scripts/temp.sh
+      register: output
+    - debug: var=output.stdout_lines

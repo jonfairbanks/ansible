@@ -1,0 +1,8 @@
+---
+- hosts: cluster_nodes
+  gather_facts: no
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Initiating shutdown on hosts
+      command: /sbin/shutdown -h now

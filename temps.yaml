@@ -1,0 +1,10 @@
+---
+- hosts: cluster
+  become: true
+  become_method: sudo
+  gather_facts: no
+  tasks:
+    - name: Getting Pi cluster temperatures
+      script: /home/jonfairbanks/scripts/temp.sh
+      register: output
+    - debug: var=output.stdout_lines
