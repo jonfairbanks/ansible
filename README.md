@@ -1,6 +1,4 @@
-# ansible
-
-### Ansible Playbooks
+# Ansible Playbooks
 
 Setup host groups:
 ```
