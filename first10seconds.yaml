@@ -2,6 +2,8 @@
 - hosts: testers
   gather_facts: yes
   tasks:
+    #- debug: var=ansible_facts
+
     - name: Setup authorized SSH key w/ existing key
       authorized_key:
         user: "{{ ansible_user_id }}"
