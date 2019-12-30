@@ -69,6 +69,22 @@
       args:
         creates: "{{ ansible_env.HOME }}/.nvm/alias"
 
+    - name: Add Docker GPG apt Key
+      become: yes
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker Repository
+      become: yes
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu bionic stable
+        state: present
+
+    - name: Update apt and install docker-ce
+      become: yes
+      apt: update_cache=yes name=docker-ce state=latest
+
     - name: Verify fail2ban started
       service:
         name=fail2ban
