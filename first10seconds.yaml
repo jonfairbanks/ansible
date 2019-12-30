@@ -29,6 +29,8 @@
           - git
           - python
           - python-apt
+          - python-pip
+          - python3-pip
           - unattended-upgrades
           - ufw
 
