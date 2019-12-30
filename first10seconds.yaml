@@ -1,7 +1,11 @@
 ---
 - hosts: testers
   gather_facts: yes
-  #serial: 1 # Set the number of hosts ansible should manage at any given time (default is all hosts)
+  # Set the number of hosts ansible should manage at any given time (ansible default is all hosts)
+  # ref https://docs.ansible.com/ansible/latest/user_guide/playbooks_delegation.html
+  serial:
+    - 1
+    - "100%"
   tasks:
     #- debug: var=ansible_facts
 
