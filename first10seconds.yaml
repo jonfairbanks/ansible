@@ -121,6 +121,6 @@
 
     - name: Verify node uptime
       shell: "uptime"
-      register: Uptime
+      register: uptime
 
-    - debug: var=Uptime.stdout_lines
+    - debug: var=uptime.stdout_lines
