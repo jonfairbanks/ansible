@@ -7,8 +7,7 @@
     - 1
     - "100%"
   tasks:
-    # Enable to print host information discovered during `gather_facts`
-    #- debug: var=ansible_facts
+    #- debug: var=ansible_facts # Enable to print host information discovered during `gather_facts`
 
     - name: Setup authorized SSH key w/ existing key
       authorized_key:
@@ -77,19 +76,19 @@
       args:
         creates: "{{ ansible_env.HOME }}/.nvm/alias"
 
-    - name: Add Docker GPG apt Key
+    - name: Add Docker GPG key
       become: yes
       apt_key:
         url: https://download.docker.com/linux/ubuntu/gpg
         state: present
 
-    - name: Add Docker Repository
+    - name: Add Docker repository
       become: yes
       apt_repository:
         repo: deb https://download.docker.com/linux/ubuntu bionic stable
         state: present
 
-    - name: Update apt and install docker-ce
+    - name: Install Docker
       become: yes
       apt: update_cache=yes name=docker-ce state=latest
 
@@ -106,11 +105,12 @@
         policy: deny
         logging: 'on'
 
-    - name: UFW - Allow OpenSSH
+    - name: UFW - Allow & Rate Limit SSH
       become: yes
       ufw:
-        rule: allow
-        name: OpenSSH
+        rule: limit
+        port: ssh
+        proto: tcp
 
     - name: UFW - Allow TCP port 80
       become: yes
