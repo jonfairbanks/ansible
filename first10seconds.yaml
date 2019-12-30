@@ -99,6 +99,33 @@
         state=started
         enabled=yes
 
+    - name: UFW - Enable and set policy=deny as default
+      become: yes
+      ufw:
+        state: enabled
+        policy: deny
+        logging: 'on'
+
+    - name: UFW - Allow OpenSSH
+      become: yes
+      ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: UFW - Allow TCP port 80
+      become: yes
+      ufw:
+        rule: allow
+        port: '80'
+        proto: tcp
+
+    - name: UFW - Allow TCP port 443
+      become: yes
+      ufw:
+        rule: allow
+        port: '443'
+        proto: tcp
+
     - name: Check if reboot is required
       stat:
         path: /var/run/reboot-required
