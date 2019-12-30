@@ -1,6 +1,7 @@
 ---
 - hosts: testers
   gather_facts: yes
+  #serial: 1 # Set the number of hosts ansible should manage at any given time (default is all hosts)
   tasks:
     #- debug: var=ansible_facts
 
