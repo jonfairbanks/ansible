@@ -1,0 +1,32 @@
+---
+- hosts: testers
+  become: yes
+  tasks:
+  - name: Verify Factorio is running
+    docker_container:
+      name: factorio
+      state: present
+      image: factoriotools/factorio
+  
+  - name: Stop Factorio
+    docker_container:
+      name: factorio
+      state: stopped
+
+  - name: Remove Factorio
+    docker_container:
+      name: factorio
+      state: absent
+
+  - name: Setup & Launch Factorio
+    docker_container:
+      name: factorio
+      image: factoriotools/factorio
+      restart_policy: always
+      state: started
+      exposed_ports:
+        - '34197'
+      ports:
+        - '34197:34197/udp'
+      volumes:
+        - '/opt/factorio:/factorio'
