@@ -1,6 +1,5 @@
 ---
 - hosts: testers
-  gather_facts: yes
   # Set the number of hosts ansible should manage at any given time (ansible default is all hosts)
   # ref https://docs.ansible.com/ansible/latest/user_guide/playbooks_delegation.html
   serial:
@@ -91,6 +90,13 @@
     - name: Install Docker
       become: yes
       apt: update_cache=yes name=docker-ce state=latest
+
+    - name: Add '{{ ansible_user_id }}' to docker user group
+      become: yes
+      user:
+        name: '{{ ansible_user_id }}'
+        groups: docker
+        append: yes
 
     - name: Verify fail2ban started
       service:
