@@ -26,17 +26,18 @@
       become: yes
       apt:
         pkg:
-          - fail2ban
-          - curl
+          - apache2-utils
           - apt-transport-https
-          - nmap
+          - curl
+          - fail2ban
           - git
+          - nmap
           - python
           - python-apt
           - python-pip
           - python3-pip
-          - unattended-upgrades
           - ufw
+          - unattended-upgrades
 
     - name: Add the apt signing key for Kubernetes
       become: yes
