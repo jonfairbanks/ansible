@@ -2,13 +2,12 @@
 - hosts: cluster_nodes
   become: true
   become_method: sudo
-  gather_facts: no
   tasks:
-    - name: Initiate node restarts
+    - name: Initiate Node restarts
       reboot:
         reboot_timeout: 3600
 
-    - name: Waiting for nodes to reconnect
+    - name: Waiting for Nodes to reconnect
       wait_for_connection:
         connect_timeout: 10
         sleep: 5
@@ -17,6 +16,6 @@
 
     - name: Verify node uptime
       shell: "uptime"
-      register: Uptime
+      register: uptime
 
-    - debug: var=Uptime.stdout_lines
+    - debug: var=uptime.stdout_lines
