@@ -31,6 +31,7 @@
           - curl
           - fail2ban
           - git
+          - ncdu
           - nmap
           - python
           - python-apt
@@ -132,6 +133,11 @@
         rule: allow
         port: '443'
         proto: tcp
+
+    - name: Create 'diskspace' alias
+      command:
+        cmd: echo 'alias diskspace="ncdu"' >> {{ ansible_user_id }}/.bash_aliases 
+        creates: '{{ ansible_user_id }}'/.bash_aliases 
 
     - name: Check if reboot is required
       stat:
