@@ -135,9 +135,14 @@
         proto: tcp
 
     - name: Create 'diskspace' alias
-      command:
-        cmd: echo 'alias diskspace="ncdu"' >> {{ ansible_user_id }}/.bash_aliases 
-        creates: '{{ ansible_user_id }}'/.bash_aliases 
+      lineinfile:
+        path={{ ansible_env.HOME }}/.bash_aliases
+        line="alias diskspace='ncdu'"
+        owner={{ ansible_user_id }}
+        regexp='^alias diskspace='ncdu'$'
+        state=present
+        insertafter=EOF
+        create=True
 
     - name: Check if reboot is required
       stat:
