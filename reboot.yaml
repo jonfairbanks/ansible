@@ -6,16 +6,20 @@
     - name: Initiate Node restarts
       reboot:
         reboot_timeout: 3600
-
-    - name: Waiting for Nodes to reconnect
-      wait_for_connection:
-        connect_timeout: 10
-        sleep: 5
-        delay: 5
-        timeout: 300
+      
+    - name: Waiting for the machine(s) to come back
+      local_action: 
+        module: wait_for 
+          host={{ ansible_host }} 
+          state=started
+          port=22
+          delay=60
+      become: false
 
     - name: Verify node uptime
       shell: "uptime"
+      async: 60
+      poll: 1
       register: uptime
 
     - debug: var=uptime.stdout_lines
