@@ -137,9 +137,9 @@
     - name: Create 'diskspace' alias
       lineinfile:
         path={{ ansible_env.HOME }}/.bash_aliases
-        line="alias diskspace='ncdu'"
+        line="alias diskspace='sudo ncdu -x /'"
         owner={{ ansible_user_id }}
-        regexp='^alias diskspace='ncdu'$'
+        regexp='^alias diskspace='sudo ncdu -x /'$'
         state=present
         insertafter=EOF
         create=True
