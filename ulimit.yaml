@@ -1,0 +1,32 @@
+- hosts: testers
+  become: true
+  tasks:
+    - name: Verify initial ulimit values
+      shell: "ulimit -n"
+      register: ulimit
+
+    - debug: var=ulimit.stdout_lines
+
+    - name: Configuring ulimit
+      pam_limits:
+        domain: "{{ lookup('env','USER') }}"
+        limit_type: "{{item.limit_type}}"
+        limit_item: "{{item.limit_item}}"
+        value: "{{item.value}}"
+      with_items:
+        - { limit_type: '-', limit_item: 'nofile', value: 65536 }
+        - { limit_type: '-', limit_item: 'nproc', value: 65536 }
+        - { limit_type: 'soft', limit_item: 'memlock', value: unlimited }
+        - { limit_type: 'hard', limit_item: 'memlock', value: unlimited }
+
+    - name: Reloading system config files
+      shell: sysctl --system
+
+    - pause:
+        seconds: 15
+
+    - name: Re-verify ulimit after updates
+      shell: "ulimit -n"
+      register: ulimitfinal
+
+    - debug: var=ulimitfinal.stdout_lines
