@@ -1,29 +1,21 @@
----
 - hosts: testers
-  # Set the number of hosts ansible should manage at any given time (ansible default is all hosts)
-  # ref https://docs.ansible.com/ansible/latest/user_guide/playbooks_delegation.html
   serial:
     - 1
-    - "100%"
+    - 100%
   tasks:
-    #- debug: var=ansible_facts # Enable to print host information discovered during `gather_facts`
-
     - name: Setup authorized SSH key w/ existing key
       authorized_key:
-        user: "{{ ansible_user_id }}"
+        user: '{{ ansible_user_id }}'
         state: present
-        key: "{{ lookup('file', '/home/{{ ansible_user_id }}/.ssh/id_rsa.pub') }}"
-
+        key: '{{ lookup(''file'', ''/home/{{ ansible_user_id }}/.ssh/id_rsa.pub'') }}'
     - name: Checking for updates
-      become: yes
+      become: 'yes'
       apt: update_cache=yes
-
     - name: Upgrading system apps
-      become: yes
+      become: 'yes'
       apt: upgrade=dist
-
     - name: Install Packages
-      become: yes
+      become: 'yes'
       apt:
         pkg:
           - apache2-utils
@@ -39,146 +31,119 @@
           - python3-pip
           - ufw
           - unattended-upgrades
-
     - name: Add the apt signing key for Kubernetes
-      become: yes
+      become: 'yes'
       apt_key:
-        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        url: 'https://packages.cloud.google.com/apt/doc/apt-key.gpg'
         state: present
-  
     - name: Add apt repository for Kubernetes
-      become: yes
+      become: 'yes'
       apt_repository:
-        repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+        repo: 'deb https://apt.kubernetes.io/ kubernetes-xenial main'
         state: present
         filename: kubernetes.list
-  
     - name: Install Kubernetes kubectl
-      become: yes
-      apt: 
+      become: 'yes'
+      apt:
         name: kubectl
         state: present
-        update_cache: yes
-
+        update_cache: 'yes'
     - name: Install nvm
       shell: >
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.2/install.sh | bash
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.2/install.sh
+        | bash
       args:
-        creates: "{{ ansible_env.HOME }}/.nvm/nvm.sh"
-
+        creates: '{{ ansible_env.HOME }}/.nvm/nvm.sh'
     - name: Setup nvm
-      shell: |
-        export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
-        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # This loads nvm
-
-    - name: Install Node.js and set default version
       shell: >
+        export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s
+        "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
+
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # This loads nvm
+    - name: Install Node.js and set default version
+      shell: |
         nvm install 0.10 && nvm alias default 0.10
       args:
-        creates: "{{ ansible_env.HOME }}/.nvm/alias"
-
+        creates: '{{ ansible_env.HOME }}/.nvm/alias'
     - name: Add Docker GPG key
-      become: yes
+      become: 'yes'
       apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
+        url: 'https://download.docker.com/linux/ubuntu/gpg'
         state: present
-
     - name: Add Docker repository
-      become: yes
+      become: 'yes'
       apt_repository:
-        repo: deb https://download.docker.com/linux/ubuntu bionic stable
+        repo: 'deb https://download.docker.com/linux/ubuntu bionic stable'
         state: present
-
     - name: Install Docker
-      become: yes
+      become: 'yes'
       apt: update_cache=yes name=docker-ce state=latest
-
-    - name: Add '{{ ansible_user_id }}' to docker user group
-      become: yes
+    - name: 'Add ''{{ ansible_user_id }}'' to docker user group'
+      become: 'yes'
       user:
         name: '{{ ansible_user_id }}'
         groups: docker
-        append: yes
-
+        append: 'yes'
     - name: Verify fail2ban started
-      service:
-        name=fail2ban
-        state=started
-        enabled=yes
-
+      service: name=fail2ban state=started enabled=yes
     - name: UFW - Enable and set policy=deny as default
-      become: yes
+      become: 'yes'
       ufw:
         state: enabled
         policy: deny
         logging: 'on'
-
     - name: UFW - Allow & Rate Limit SSH
-      become: yes
+      become: 'yes'
       ufw:
         rule: limit
         port: ssh
         proto: tcp
-
     - name: UFW - Allow TCP port 80
-      become: yes
+      become: 'yes'
       ufw:
         rule: allow
         port: '80'
         proto: tcp
-
     - name: UFW - Allow TCP port 443
-      become: yes
+      become: 'yes'
       ufw:
         rule: allow
         port: '443'
         proto: tcp
-
     - name: Create 'diskspace' alias
-      lineinfile:
-        path={{ ansible_env.HOME }}/.bash_aliases
+      lineinfile: >-
+        path={{ ansible_env.HOME }}/.bash_aliases 
         line="alias diskspace='sudo ncdu'"
-        owner={{ ansible_user_id }}
-        regexp='^alias diskspace='sudo ncdu'$'
+        regexp="^alias diskspace='sudo ncdu'$"
         state=present
         insertafter=EOF
-        create=True
-
+        create=yes
     - name: Check if reboot is required
       stat:
         path: /var/run/reboot-required
       register: reboot_required
-
-    # ref http://stackoverflow.com/a/35169496
     - name: Notify of pending reboot
       pause:
-        prompt: "Press ENTER to reboot {{ item }} now, or Ctrl+C to abort."
-      when: "'reboot_required' in hostvars[item] and hostvars[item]['reboot_required'].stat.exists"
-      with_items: "{{ play_hosts }}"
-    
-    # ref https://support.ansible.com/hc/en-us/articles/201958037-Reboot-a-server-and-wait-for-it-to-come-back
+        prompt: 'Press ENTER to reboot {{ item }} now, or Ctrl+C to abort.'
+      when: >-
+        'reboot_required' in hostvars[item] and
+        hostvars[item]['reboot_required'].stat.exists
+      with_items: '{{ play_hosts }}'
     - name: Rebooting machine(s)
-      become: yes
+      become: 'yes'
       shell: sleep 2 && shutdown -r now "Ansible updates triggered"
       async: 1
       poll: 0
       ignore_errors: true
       when: reboot_required.stat.exists
-    
     - name: Waiting for the machine(s) to come back
-      local_action: 
-        module: wait_for 
-          host={{ ansible_host }} 
-          state=started
-          port=22
-          delay=60
+      local_action:
+        module: 'wait_for host={{ ansible_host }} state=started port=22 delay=60'
       become: false
       when: reboot_required.stat.exists
-
     - name: Verify node uptime
-      shell: "uptime"
+      shell: uptime
       async: 60
       poll: 1
       register: uptime
-
     - debug: var=uptime.stdout_lines
