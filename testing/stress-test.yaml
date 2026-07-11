@@ -3,12 +3,16 @@
   become: true
   become_method: sudo
   gather_facts: no
+  pre_tasks:
+    - name: Ensure the Raspberry Pi temperature script is installed
+      ansible.builtin.import_tasks: ../raspberry-pi/tasks/ensure-pi-temps.yaml
   tasks:
     - name: Installing sysbench
       apt: pkg=sysbench state=present update_cache=true
     - name: Running a 5m stress test
       command: sysbench --max-time=300 --test=cpu --cpu-max-prime=200000 --num-threads=8 run
     - name: Getting Pi cluster temperatures
-      script: /home/jonfairbanks/scripts/temp.sh
+      ansible.builtin.command: /usr/local/bin/pi-temps.sh
       register: output
-    - debug: var=output.stdout_lines
+    - ansible.builtin.debug:
+        var: output.stdout_lines

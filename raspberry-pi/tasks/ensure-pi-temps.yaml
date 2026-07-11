@@ -1,0 +1,14 @@
+---
+- name: Check for the Raspberry Pi temperature script
+  ansible.builtin.stat:
+    path: /usr/local/bin/pi-temps.sh
+  register: pi_temps_script
+
+- name: Install the Raspberry Pi temperature script when missing
+  ansible.builtin.get_url:
+    url: https://raw.githubusercontent.com/jonfairbanks/scripts/master/pi-temps/pi-temps.sh
+    dest: /usr/local/bin/pi-temps.sh
+    owner: root
+    group: root
+    mode: '0755'
+  when: not pi_temps_script.stat.exists
