@@ -72,8 +72,22 @@ ansible-playbook system/ulimit.yaml --limit <host-alias>
 
 ## Apply Updates
 
-`updates.yaml` applies Ubuntu package upgrades and reboots when required.
+`updates.yaml` applies Debian-family package upgrades to `managed_hosts` one
+host at a time. It reports a required reboot but does not reboot by default.
 
 ```sh
 ansible-playbook system/updates.yaml --limit <host-alias>
+```
+
+To target a host or group outside `managed_hosts`, override `target_hosts`:
+
+```sh
+ansible-playbook system/updates.yaml -e 'target_hosts=<host-alias-or-group>'
+```
+
+To apply updates and reboot the selected host when required:
+
+```sh
+ansible-playbook system/updates.yaml --limit <host-alias> \
+  -e 'reboot_if_required=true'
 ```
