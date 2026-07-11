@@ -7,5 +7,5 @@ rules, and then reboots if required.
 Run it with:
 
 ```sh
-ansible-playbook bootstrap/first10seconds.yaml
+ansible-playbook bootstrap/first10seconds.yaml --limit <host-alias>
 ```

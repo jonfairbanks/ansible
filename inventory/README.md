@@ -82,6 +82,3 @@ Set `ansible_user` in the local ignored inventory. With the default
 ```sh
 ansible-playbook system/set-timezone.yaml --limit <host-alias>
 ```
-
-Some playbooks reboot or shut down their targets. Confirm the selected
-playbook before running it against this host.

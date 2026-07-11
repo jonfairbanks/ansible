@@ -5,7 +5,7 @@
 - [Bootstrap](bootstrap/README.md)
 - [Docker workloads](docker/README.md)
 - [Examples](examples/README.md)
-- [Inventory](inventory/README.md)
+- [Inventory setup](inventory/README.md)
 - [K3s cluster setup](k3s/README.md)
 - [Raspberry Pi](raspberry-pi/README.md)
 - [System management](system/README.md)
