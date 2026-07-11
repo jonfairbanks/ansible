@@ -1,25 +1,18 @@
 ---
-- hosts: cluster_nodes
+- name: Reboot selected hosts
+  hosts: "{{ target_hosts | default('k3s_workers') }}"
   become: true
-  become_method: sudo
+  gather_facts: false
   tasks:
-    - name: Initiate Node restarts
-      reboot:
+    - name: Reboot hosts and wait for them to return
+      ansible.builtin.reboot:
         reboot_timeout: 3600
-      
-    - name: Waiting for the machine(s) to come back
-      local_action: 
-        module: wait_for 
-          host={{ ansible_host }} 
-          state=started
-          port=22
-          delay=60
-      become: false
 
     - name: Verify node uptime
-      shell: "uptime"
-      async: 60
-      poll: 1
+      ansible.builtin.command: uptime
+      changed_when: false
       register: uptime
 
-    - debug: var=uptime.stdout_lines
+    - name: Display node uptime
+      ansible.builtin.debug:
+        var: uptime.stdout_lines

@@ -1,5 +1,5 @@
 ---
-- hosts: testers
+- hosts: managed_hosts
   become: yes
   tasks:
   - name: Verify Factorio is running

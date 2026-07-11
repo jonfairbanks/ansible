@@ -1,4 +1,4 @@
-- hosts: testers
+- hosts: managed_hosts
   become: true
   tasks:
     - name: Verify initial ulimit values

@@ -1,0 +1,3 @@
+# Local infrastructure inventory. Keep hostnames, addresses, and credentials out of Git.
+/inventory/hosts.ini
+/k3s/inventory/k3s.ini

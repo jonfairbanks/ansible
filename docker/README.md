@@ -4,4 +4,4 @@
 - `factorio-update.yaml`: Recreate the Factorio container.
 - `rancher-install.yaml`: Install Docker and run Rancher.
 
-All current Docker playbooks target the `testers` inventory group.
+All current Docker playbooks target the `managed_hosts` inventory group.

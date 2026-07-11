@@ -1,4 +1,4 @@
-- hosts: "{{ variable_host | default('testers') }}"
+- hosts: "{{ variable_host | default('managed_hosts') }}"
   serial:
     - 1
     - 100%
