@@ -36,8 +36,19 @@ down a specific host outside that group intentionally, override `target_hosts`:
 ansible-playbook system/shutdown.yaml -e 'target_hosts=control_plane'
 ```
 
-The playbook returns after it dispatches the non-blocking power-off request;
-the host is expected to become unavailable afterward.
+The playbook schedules power-off one minute later by default, allowing Ansible
+to confirm the request before SSH closes. Change the delay when needed:
+
+```sh
+ansible-playbook system/shutdown.yaml \
+  -e 'target_hosts=control_plane shutdown_delay_minutes=5'
+```
+
+To cancel a scheduled shutdown on the host before it runs:
+
+```sh
+sudo shutdown -c
+```
 
 ## Static IP Address
 

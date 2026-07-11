@@ -3,15 +3,27 @@
   hosts: "{{ target_hosts | default('k3s_workers') }}"
   become: true
   gather_facts: false
+  vars:
+    shutdown_delay_minutes: 1
+
+  pre_tasks:
+    - name: Require a positive shutdown delay
+      ansible.builtin.assert:
+        that:
+          - shutdown_delay_minutes | int >= 1
+        fail_msg: Set shutdown_delay_minutes to at least 1.
+
   tasks:
-    - name: Request a non-blocking system power off
+    - name: Schedule a system power off
       ansible.builtin.command:
         argv:
-          - systemctl
-          - poweroff
-          - --no-block
+          - /sbin/shutdown
+          - --poweroff
+          - "+{{ shutdown_delay_minutes | int }}"
       changed_when: true
 
-    - name: Report shutdown request dispatch
+    - name: Report scheduled shutdown
       ansible.builtin.debug:
-        msg: "Shutdown request dispatched for {{ inventory_hostname }}"
+        msg: >-
+          Shutdown scheduled for {{ inventory_hostname }} in
+          {{ shutdown_delay_minutes | int }} minute(s).
