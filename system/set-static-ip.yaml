@@ -1,0 +1,80 @@
+---
+- name: Configure a static IPv4 address on Ubuntu
+  hosts: all
+  become: true
+  gather_facts: true
+  serial: 1
+
+  # Override these values with --extra-vars, or edit them here before running.
+  vars:
+    static_ip_address: 192.168.4.10
+
+  pre_tasks:
+    - name: Require Ubuntu
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.distribution == 'Ubuntu'
+        fail_msg: This playbook supports Ubuntu hosts only.
+
+    - name: Require a valid IPv4 static address
+      ansible.builtin.assert:
+        that:
+          - static_ip_address is match('^([0-9]{1,3}\\.){3}[0-9]{1,3}$')
+        fail_msg: Provide static_ip_address as an IPv4 address without a network prefix.
+
+    - name: Discover the interface carrying the default IPv4 route
+      ansible.builtin.set_fact:
+        network_interface: "{{ ansible_facts.default_ipv4.interface }}"
+
+    - name: Require the default-route interface to be Ethernet
+      ansible.builtin.assert:
+        that:
+          - ansible_facts[network_interface].type == 'ether'
+        fail_msg: >-
+          The default-route interface ({{ network_interface }}) is not Ethernet.
+          Connect through the target Ethernet network and run the playbook again.
+
+    - name: Ensure Netplan is installed
+      ansible.builtin.apt:
+        name: netplan.io
+        state: present
+        update_cache: true
+
+  tasks:
+    - name: Write Ansible-managed Netplan static address configuration
+      ansible.builtin.copy:
+        dest: /etc/netplan/99-ansible-static-ip.yaml
+        owner: root
+        group: root
+        mode: "0600"
+        backup: true
+        content: |
+          # Managed by Ansible. Configure this host through set-static-ip.yaml.
+          network:
+            version: 2
+            ethernets:
+              {{ network_interface }}:
+                dhcp4: false
+                addresses:
+                  - {{ static_ip_address }}/24
+                routes:
+                  - to: default
+                    via: 192.168.4.1
+                nameservers:
+                  addresses:
+                    - 192.168.4.1
+      notify: Validate and apply Netplan
+
+    - name: Apply the new network configuration now
+      ansible.builtin.meta: flush_handlers
+
+  handlers:
+    - name: Validate and apply Netplan
+      block:
+        - name: Generate Netplan configuration
+          ansible.builtin.command: netplan generate
+          changed_when: false
+
+        - name: Apply Netplan configuration
+          ansible.builtin.command: netplan apply
+          changed_when: true
