@@ -1,0 +1,11 @@
+---
+- name: Verify Ansible connectivity
+  hosts: managed_hosts
+  gather_facts: false
+  tasks:
+    - name: Ping managed hosts
+      ansible.builtin.ping:
+
+    - name: Display a connection confirmation
+      ansible.builtin.debug:
+        msg: "Hello from {{ inventory_hostname }}"

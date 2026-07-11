@@ -7,7 +7,7 @@
 
   # Override these values with --extra-vars, or edit them here before running.
   vars:
-    static_ip_address: 192.168.4.10
+    static_ip_address: 192.0.2.10
 
   pre_tasks:
     - name: Require Ubuntu
