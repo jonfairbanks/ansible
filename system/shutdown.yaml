@@ -1,8 +1,17 @@
 ---
-- hosts: k3s_workers
-  gather_facts: no
+- name: Shut down selected hosts
+  hosts: "{{ target_hosts | default('k3s_workers') }}"
   become: true
-  become_method: sudo
+  gather_facts: false
   tasks:
-    - name: Initiating shutdown on hosts
-      command: /sbin/shutdown -h now
+    - name: Request a non-blocking system power off
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - poweroff
+          - --no-block
+      changed_when: true
+
+    - name: Report shutdown request dispatch
+      ansible.builtin.debug:
+        msg: "Shutdown request dispatched for {{ inventory_hostname }}"
