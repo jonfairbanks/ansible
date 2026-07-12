@@ -1,32 +1,31 @@
 ---
-- hosts: managed_hosts
-  become: yes
+- name: Update the Factorio container
+  hosts: "{{ target_hosts | default('managed_hosts') }}"
+  become: true
+  gather_facts: false
+  pre_tasks:
+    - name: Ensure Docker is installed and ready
+      ansible.builtin.import_tasks: tasks/ensure-docker.yaml
   tasks:
-  - name: Verify Factorio is running
-    docker_container:
-      name: factorio
-      state: present
-      image: factoriotools/factorio
-  
-  - name: Stop Factorio
-    docker_container:
-      name: factorio
-      state: stopped
+    - name: Stop the Factorio container
+      community.docker.docker_container:
+        name: factorio
+        state: stopped
 
-  - name: Remove Factorio
-    docker_container:
-      name: factorio
-      state: absent
+    - name: Remove the Factorio container
+      community.docker.docker_container:
+        name: factorio
+        state: absent
 
-  - name: Setup & Launch Factorio
-    docker_container:
-      name: factorio
-      image: factoriotools/factorio
-      restart_policy: always
-      state: started
-      exposed_ports:
-        - '34197'
-      ports:
-        - '34197:34197/udp'
-      volumes:
-        - '/opt/factorio:/factorio'
+    - name: Run the updated Factorio container
+      community.docker.docker_container:
+        name: factorio
+        image: factoriotools/factorio
+        restart_policy: always
+        state: started
+        exposed_ports:
+          - '34197'
+        ports:
+          - '34197:34197/udp'
+        volumes:
+          - /opt/factorio:/factorio

@@ -1,0 +1,39 @@
+---
+- name: Check whether Docker is installed
+  ansible.builtin.command: docker --version
+  register: docker_version
+  changed_when: false
+  failed_when: false
+
+- name: Download the Docker convenience script when Docker is missing
+  ansible.builtin.get_url:
+    url: https://get.docker.com
+    dest: /tmp/get-docker.sh
+    owner: root
+    group: root
+    mode: '0700'
+  when: docker_version.rc != 0
+
+- name: Install Docker when it is missing
+  ansible.builtin.command:
+    cmd: /tmp/get-docker.sh
+    creates: /usr/bin/docker
+  when: docker_version.rc != 0
+
+- name: Ensure Docker is enabled and started
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Install the Docker Python SDK
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+    update_cache: true
+
+- name: Add the managed user to the Docker group
+  ansible.builtin.user:
+    name: "{{ docker_managed_user | default(ansible_user) }}"
+    groups: docker
+    append: true

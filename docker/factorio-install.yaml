@@ -1,59 +1,35 @@
 ---
-- hosts: managed_hosts
-  become: yes
+- name: Install and run Factorio
+  hosts: "{{ target_hosts | default('managed_hosts') }}"
+  become: true
+  gather_facts: false
+  pre_tasks:
+    - name: Ensure Docker is installed and ready
+      ansible.builtin.import_tasks: tasks/ensure-docker.yaml
   tasks:
-  - name: Checking for updates
-    apt: update_cache=yes
+    - name: Create the Factorio data directory
+      ansible.builtin.file:
+        path: /opt/factorio
+        state: directory
+        owner: '845'
+        group: '845'
+        mode: '0755'
 
-  - name: Upgrading system apps
-    apt: upgrade=dist
+    - name: Allow Factorio UDP traffic
+      community.general.ufw:
+        rule: allow
+        port: '34197'
+        proto: udp
 
-  - name: Install Packages
-    apt:
-      pkg:
-        - apt-transport-https
-        - python3-pip
-
-  - name: Add Docker GPG apt Key
-    apt_key:
-      url: https://download.docker.com/linux/ubuntu/gpg
-      state: present
-
-  - name: Add Docker Repository
-    apt_repository:
-      repo: deb https://download.docker.com/linux/ubuntu bionic stable
-      state: present
-
-  - name: Update apt and install docker-ce
-    apt: update_cache=yes name=docker-ce state=latest
-
-  - name: Install Docker module for Python
-    pip:
-      name: docker
-
-  - name: Create /opt/factorio directory to persist data
-    file:
-      path: /opt/factorio
-      state: directory
-      owner: '845'
-      group: '845'
-
-  - name: UFW - Allow TCP port 34197
-    become: yes
-    ufw:
-      rule: allow
-      port: '34197'
-      proto: udp
-
-  - name: Setup & Launch Factorio
-    docker_container:
-      name: factorio
-      image: factoriotools/factorio
-      restart_policy: always
-      state: started
-      exposed_ports:
-        - '34197'
-      ports:
-        - '34197:34197/udp'
-      volumes:
-        - '/opt/factorio:/factorio'
+    - name: Run the Factorio container
+      community.docker.docker_container:
+        name: factorio
+        image: factoriotools/factorio
+        restart_policy: always
+        state: started
+        exposed_ports:
+          - '34197'
+        ports:
+          - '34197:34197/udp'
+        volumes:
+          - /opt/factorio:/factorio

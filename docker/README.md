@@ -4,7 +4,22 @@
 - `factorio-update.yaml`: Recreate the Factorio container.
 - `rancher-install.yaml`: Install Docker and run Rancher.
 
-All current Docker playbooks target the `managed_hosts` inventory group.
+All Docker playbooks target `managed_hosts` by default and accept a
+`target_hosts` override. They check for Docker first and run Docker's official
+convenience installer only when the engine is missing. Existing Docker engines
+are not upgraded by these playbooks.
+
+The shared setup adds the configured Ansible user to the `docker` group. Open a
+new SSH session before using Docker directly without `sudo`.
+
+Install the required Ansible collections before running Docker playbooks:
+
+```sh
+ansible-galaxy collection install -r requirements.yml
+```
+
+Docker-published ports can require workload-specific firewall handling; the
+bootstrap UFW baseline does not add Docker-specific filtering rules.
 
 ## `factorio-install.yaml`
 
