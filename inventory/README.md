@@ -11,7 +11,8 @@ The `managed_hosts` group contains all managed systems. The template separates
 that broader set from K3s cluster membership:
 
 - `k3s_cluster` includes control-plane and worker hosts.
-- `k3s_workers` includes worker hosts only.
+- `k3s_master` and `k3s_workers` select K3s installation roles; `k3s_workers`
+  contains worker hosts only.
 
 Ansible's implicit `all` group includes every host.
 

@@ -1,0 +1,122 @@
+---
+# Usage:
+#   ansible-playbook k3s/argocd.yaml
+#
+# Installs the official Argo CD manifest on the K3s server. Override
+# argocd_version only with a released, supported version.
+
+- name: Install Argo CD on K3s
+  hosts: k3s_master
+  become: true
+  gather_facts: false
+  vars:
+    argocd_version: v3.4.2
+    argocd_namespace: argocd
+    argocd_install_profile: standard
+    argocd_manifest_path: >-
+      {{ 'manifests/ha/install.yaml'
+      if argocd_install_profile == 'ha'
+      else 'manifests/install.yaml' }}
+    argocd_manifest_url: >-
+      https://raw.githubusercontent.com/argoproj/argo-cd/{{ argocd_version }}/{{ argocd_manifest_path }}
+
+  pre_tasks:
+    - name: Require exactly one K3s server in the inventory
+      ansible.builtin.assert:
+        that:
+          - "'k3s_master' in groups"
+          - groups['k3s_master'] | length == 1
+        fail_msg: Define exactly one host in the [k3s_master] inventory group.
+      run_once: true
+
+    - name: Require a released Argo CD version
+      ansible.builtin.assert:
+        that:
+          - argocd_version is match('^v[0-9]+\\.[0-9]+\\.[0-9]+$')
+        fail_msg: Set argocd_version to a released version, for example v3.4.2.
+
+    - name: Require a supported Argo CD installation profile
+      ansible.builtin.assert:
+        that:
+          - argocd_install_profile in ['standard', 'ha']
+        fail_msg: Set argocd_install_profile to standard or ha.
+
+    - name: Check that K3s is installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s
+      register: k3s_binary
+
+    - name: Require an installed K3s server
+      ansible.builtin.assert:
+        that:
+          - k3s_binary.stat.exists
+          - k3s_binary.stat.executable
+        fail_msg: Run k3s/k3s.yaml successfully before installing Argo CD.
+
+  tasks:
+    - name: Check whether the Argo CD namespace exists
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - get
+          - namespace
+          - "{{ argocd_namespace }}"
+      register: argocd_namespace_status
+      changed_when: false
+      failed_when: >-
+        argocd_namespace_status.rc != 0 and
+        'NotFound' not in argocd_namespace_status.stderr
+
+    - name: Create the Argo CD namespace
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - create
+          - namespace
+          - "{{ argocd_namespace }}"
+      register: argocd_namespace_result
+      when: argocd_namespace_status.rc != 0
+
+    - name: Apply the pinned Argo CD manifest
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - apply
+          - --server-side
+          - --force-conflicts
+          - --namespace
+          - "{{ argocd_namespace }}"
+          - --filename
+          - "{{ argocd_manifest_url }}"
+      register: argocd_apply
+      changed_when: >-
+        'created' in argocd_apply.stdout or 'configured' in argocd_apply.stdout
+
+    - name: Wait for the Argo CD server deployment
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - rollout
+          - status
+          - deployment/argocd-server
+          - --namespace
+          - "{{ argocd_namespace }}"
+          - --timeout=300s
+      changed_when: false
+
+    - name: Wait for the Argo CD application controller
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - rollout
+          - status
+          - statefulset/argocd-application-controller
+          - --namespace
+          - "{{ argocd_namespace }}"
+          - --timeout=300s
+      changed_when: false

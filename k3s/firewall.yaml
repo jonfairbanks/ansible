@@ -1,0 +1,72 @@
+---
+- name: Configure K3s inter-node firewall rules
+  hosts: k3s
+  become: true
+  gather_facts: false
+  vars:
+    k3s_flannel_backend: vxlan
+    k3s_api_allowed_sources: []
+
+  pre_tasks:
+    - name: Require K3s inventory groups
+      ansible.builtin.assert:
+        that:
+          - "'k3s' in groups"
+          - "'k3s_master' in groups"
+          - groups['k3s_master'] | length > 0
+        fail_msg: Define the k3s and k3s_master inventory groups before configuring the firewall.
+
+    - name: Require a supported Flannel backend
+      ansible.builtin.assert:
+        that:
+          - k3s_flannel_backend in ['vxlan', 'wireguard-native', 'none']
+        fail_msg: Set k3s_flannel_backend to vxlan, wireguard-native, or none.
+
+  tasks:
+    - name: Ensure UFW is installed
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+        update_cache: true
+
+    - name: Collect K3s node addresses from inventory
+      ansible.builtin.set_fact:
+        k3s_node_addresses: >-
+          {{ (k3s_node_addresses | default([])) +
+          [hostvars[item].ansible_host | default(item)] }}
+      loop: "{{ groups['k3s'] }}"
+
+    - name: Allow Kubelet traffic between K3s nodes
+      community.general.ufw:
+        rule: allow
+        proto: tcp
+        port: '10250'
+        from_ip: "{{ item }}"
+      loop: "{{ k3s_node_addresses }}"
+
+    - name: Allow Kubernetes API traffic to K3s servers
+      community.general.ufw:
+        rule: allow
+        proto: tcp
+        port: '6443'
+        from_ip: "{{ item }}"
+      loop: "{{ k3s_node_addresses + k3s_api_allowed_sources }}"
+      when: inventory_hostname in groups['k3s_master']
+
+    - name: Allow Flannel VXLAN traffic between K3s nodes
+      community.general.ufw:
+        rule: allow
+        proto: udp
+        port: '8472'
+        from_ip: "{{ item }}"
+      loop: "{{ k3s_node_addresses }}"
+      when: k3s_flannel_backend == 'vxlan'
+
+    - name: Allow Flannel WireGuard traffic between K3s nodes
+      community.general.ufw:
+        rule: allow
+        proto: udp
+        port: "{{ item.0 }}"
+        from_ip: "{{ item.1 }}"
+      loop: "{{ ['51820', '51821'] | product(k3s_node_addresses) | list }}"
+      when: k3s_flannel_backend == 'wireguard-native'
