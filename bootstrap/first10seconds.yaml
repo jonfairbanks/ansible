@@ -30,7 +30,7 @@
 
     - name: Record the bootstrap user home directory
       ansible.builtin.set_fact:
-        bootstrap_user_home: "{{ getent_passwd[bootstrap_user][4] }}"
+        bootstrap_user_home: "{{ ansible_facts['getent_passwd'][bootstrap_user][4] }}"
 
   tasks:
     - name: Update the APT package cache
