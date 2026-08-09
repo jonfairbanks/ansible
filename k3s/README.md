@@ -101,8 +101,9 @@ network addresses out of the committed example inventory.
 ## `argocd.yaml`
 
 `argocd.yaml` installs the official multi-tenant Argo CD manifest on the K3s
-server. It uses K3s's bundled `kubectl`, pins the Argo CD release, and waits
-for the API server and application controller to be ready.
+server. It uses K3s's bundled `kubectl`, pins the Argo CD release, creates a
+Traefik Ingress for `argocd.home.arpa`, and waits for the API server and
+application controller to be ready.
 
 ```sh
 ansible-playbook k3s/argocd.yaml
@@ -124,14 +125,33 @@ ansible-playbook k3s/argocd.yaml \
   -e 'argocd_version=v3.4.2'
 ```
 
-The service remains cluster-internal by default. To open the UI locally from
-the K3s server, use:
+Override the published hostname for a different local DNS name:
+
+```sh
+ansible-playbook k3s/argocd.yaml \
+  -e 'argocd_hostname=argocd.example.internal'
+```
+
+The Ingress follows the existing homelab HTTP pattern and uses HTTPS for its
+connection to Argo CD. Argo CD's upstream self-signed backend certificate is
+accepted only by Traefik for that in-cluster connection. For a temporary
+local-only session instead, use:
 
 ```sh
 sudo k3s kubectl -n argocd port-forward service/argocd-server 8080:443
 ```
 
-Retrieve the initial `admin` password only from a trusted terminal:
+The initial username is `admin`. To display the generated initial password at
+the end of a trusted interactive playbook run, opt in explicitly. This writes
+the password to the Ansible output, so do not use it in CI or retained logs.
+
+```sh
+ansible-playbook k3s/argocd.yaml \
+  -e 'argocd_display_initial_credentials=true'
+```
+
+The initial-password Secret may be removed after the first successful login.
+To retrieve it directly before then, use a trusted terminal:
 
 ```sh
 sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret \
