@@ -85,12 +85,8 @@
 
     - name: Install the latest stable kubectl binary
       ansible.builtin.get_url:
-        url: >-
-          https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/
-          {{ kubectl_architecture }}/kubectl
-        checksum: >-
-          sha256:https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/
-          {{ kubectl_architecture }}/kubectl.sha256
+        url: "https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/{{ kubectl_architecture }}/kubectl"
+        checksum: "sha256:https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/{{ kubectl_architecture }}/kubectl.sha256"
         dest: /usr/local/bin/kubectl
         owner: root
         group: root
@@ -114,7 +110,7 @@
       ansible.builtin.get_url:
         url: "https://raw.githubusercontent.com/nvm-sh/nvm/{{ nvm_version }}/install.sh"
         dest: "/tmp/nvm-install-{{ nvm_version }}.sh"
-        owner: root
+        owner: "{{ bootstrap_user }}"
         group: root
         mode: '0700'
 
