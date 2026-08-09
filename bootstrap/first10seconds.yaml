@@ -3,7 +3,7 @@
   hosts: "{{ target_hosts | default('managed_hosts') }}"
   become: true
   gather_facts: true
-  serial: 1
+  serial: "{{ bootstrap_batch_size | default('100%') }}"
   vars:
     bootstrap_user: "{{ ansible_user }}"
     bootstrap_ssh_port: "{{ ansible_port | default(22) }}"
