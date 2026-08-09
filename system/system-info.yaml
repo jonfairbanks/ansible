@@ -1,0 +1,27 @@
+---
+- name: Show system information for selected hosts
+  hosts: "{{ target_hosts | default('managed_hosts') }}"
+  gather_facts: false
+
+  tasks:
+    - name: Check for the Ubuntu system information utility
+      ansible.builtin.stat:
+        path: /usr/bin/landscape-sysinfo
+      register: landscape_sysinfo
+
+    - name: Require the Ubuntu system information utility
+      ansible.builtin.assert:
+        that:
+          - landscape_sysinfo.stat.exists
+        fail_msg: >-
+          landscape-sysinfo is not available on this host. Install the
+          landscape-common package to enable this Ubuntu system summary.
+
+    - name: Read system information
+      ansible.builtin.command: /usr/bin/landscape-sysinfo
+      changed_when: false
+      register: system_info
+
+    - name: Display system information
+      ansible.builtin.debug:
+        var: system_info.stdout_lines

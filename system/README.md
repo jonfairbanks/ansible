@@ -6,7 +6,9 @@
   Netplan.
 - `set-timezone.yaml`: Set all targeted hosts to `America/Los_Angeles`.
 - `shutdown.yaml`: Shut down K3s worker hosts in the `k3s_workers` inventory group.
+- `system-info.yaml`: Display the Ubuntu system-information summary for selected hosts.
 - `ulimit.yaml`: Configure process and file-descriptor limits on `managed_hosts`.
+- `uptime.yaml`: Display the uptime of selected managed hosts.
 - `updates.yaml`: Apply Ubuntu package upgrades and reboot when required.
 
 ## Reboot Hosts
@@ -81,10 +83,44 @@ ansible-playbook system/set-timezone.yaml --limit <host-alias>
 ansible-playbook system/ulimit.yaml --limit <host-alias>
 ```
 
+## Show Uptime
+
+`uptime.yaml` is read-only and targets `managed_hosts` by default.
+
+```sh
+ansible-playbook system/uptime.yaml --limit <host-alias>
+```
+
+To select a host or group explicitly:
+
+```sh
+ansible-playbook system/uptime.yaml -e 'target_hosts=<host-alias-or-group>'
+```
+
+## Show System Information
+
+`system-info.yaml` displays the Ubuntu system summary, including load,
+temperature, disk, process, memory, swap, logged-in user, and default-interface
+IPv4 information. It is read-only, runs in parallel by default, and targets
+`managed_hosts` by default.
+
+```sh
+ansible-playbook system/system-info.yaml --limit <host-alias>
+```
+
+It requires the `landscape-sysinfo` utility supplied by Ubuntu's
+`landscape-common` package. To select a host or group explicitly:
+
+```sh
+ansible-playbook system/system-info.yaml \
+  -e 'target_hosts=<host-alias-or-group>'
+```
+
 ## Apply Updates
 
-`updates.yaml` applies Debian-family package upgrades to `managed_hosts` one
-host at a time. It reports a required reboot but does not reboot by default.
+`updates.yaml` applies Debian-family package upgrades to `managed_hosts` in
+parallel by default. It reports a required reboot but does not reboot by
+default.
 
 ```sh
 ansible-playbook system/updates.yaml --limit <host-alias>
@@ -96,9 +132,18 @@ To target a host or group outside `managed_hosts`, override `target_hosts`:
 ansible-playbook system/updates.yaml -e 'target_hosts=<host-alias-or-group>'
 ```
 
+For a rolling update, process one host at a time:
+
+```sh
+ansible-playbook system/updates.yaml -e 'update_batch_size=1'
+```
+
 To apply updates and reboot the selected host when required:
 
 ```sh
 ansible-playbook system/updates.yaml --limit <host-alias> \
   -e 'reboot_if_required=true'
 ```
+
+With automatic reboots enabled, every host in the active batch can reboot at
+the same time. Use `update_batch_size=1` for a rolling reboot.
