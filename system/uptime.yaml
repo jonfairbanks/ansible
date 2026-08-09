@@ -1,0 +1,14 @@
+---
+- name: Show uptime for selected hosts
+  hosts: "{{ target_hosts | default('managed_hosts') }}"
+  gather_facts: false
+
+  tasks:
+    - name: Read system uptime
+      ansible.builtin.command: uptime
+      changed_when: false
+      register: uptime
+
+    - name: Display system uptime
+      ansible.builtin.debug:
+        var: uptime.stdout
