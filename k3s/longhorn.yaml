@@ -1,0 +1,55 @@
+---
+# Usage:
+#   ansible-playbook k3s/longhorn.yaml
+#
+# Prepares Debian-family K3s nodes for the Longhorn Application managed in the
+# cluster-state repository.
+
+- name: Prepare K3s nodes for Longhorn
+  hosts: k3s
+  become: true
+  gather_facts: true
+  vars:
+    longhorn_host_packages:
+      - open-iscsi
+      - nfs-common
+
+  pre_tasks:
+    - name: Require Debian-family K3s nodes
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['os_family'] == 'Debian'
+        fail_msg: >-
+          This playbook currently prepares Debian-family nodes. Add the
+          appropriate iSCSI and NFS client packages before using another OS.
+
+    - name: Check that K3s is installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s
+      register: longhorn_k3s_binary
+
+    - name: Require K3s on every cluster node
+      ansible.builtin.assert:
+        that:
+          - longhorn_k3s_binary.stat.exists
+          - longhorn_k3s_binary.stat.executable
+        fail_msg: Run k3s/k3s.yaml successfully before installing Longhorn.
+
+  tasks:
+    - name: Install Longhorn host prerequisites
+      ansible.builtin.package:
+        name: "{{ longhorn_host_packages }}"
+        state: present
+
+    - name: Load the iSCSI TCP kernel module
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/modprobe
+          - iscsi_tcp
+      changed_when: false
+
+    - name: Enable the iSCSI daemon
+      ansible.builtin.systemd_service:
+        name: iscsid
+        enabled: true
+        state: started

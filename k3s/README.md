@@ -214,3 +214,19 @@ To retrieve it directly before then, use a trusted terminal:
 sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' | base64 --decode; echo
 ```
+
+## `longhorn.yaml`
+
+`longhorn.yaml` installs the host prerequisites on every Debian-family K3s node.
+The Longhorn Argo CD Application and its Helm values live in the separate
+`cluster-state` repository, which is the source of truth for cluster workloads.
+
+Install the host prerequisites before merging the Longhorn `cluster-state` PR:
+
+```sh
+ansible-playbook k3s/longhorn.yaml
+```
+
+Do not add Longhorn manifests to this repository or apply them directly: Argo CD
+reconciles them from `cluster-state`. Longhorn's UI remains unexposed until an
+authenticated ingress design is added.
