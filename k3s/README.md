@@ -54,6 +54,11 @@ After an agent joins, the playbook applies the standard
 `worker` role. By default, it uses the worker's system hostname. Set
 `k3s_node_name` for a worker when its Kubernetes node name differs.
 
+The playbook also configures the bundled Traefik controller as a DaemonSet and
+uses `externalTrafficPolicy: Local`. This preserves client source addresses for
+Ingress workloads while ensuring every K3s node receiving ServiceLB traffic has
+a local Traefik endpoint.
+
 To label existing workers without rerunning installation tasks:
 
 ```sh

@@ -105,6 +105,34 @@
         INSTALL_K3S_EXEC: "server --write-kubeconfig-mode=0644 {{ k3s_server_extra_args }}"
       no_log: true
 
+    - name: Create the K3s packaged-manifest directory
+      ansible.builtin.file:
+        path: /var/lib/rancher/k3s/server/manifests
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Configure Traefik to preserve client source addresses
+      ansible.builtin.copy:
+        dest: /var/lib/rancher/k3s/server/manifests/k3s-traefik-config.yaml
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          apiVersion: helm.cattle.io/v1
+          kind: HelmChartConfig
+          metadata:
+            name: traefik
+            namespace: kube-system
+          spec:
+            valuesContent: |-
+              deployment:
+                kind: DaemonSet
+              service:
+                spec:
+                  externalTrafficPolicy: Local
+
     - name: Apply K3s server configuration changes
       ansible.builtin.meta: flush_handlers
 
@@ -117,6 +145,52 @@
 
     - name: Verify the K3s server service is active
       ansible.builtin.command: systemctl is-active k3s
+      changed_when: false
+
+    - name: Wait for Traefik to preserve client source addresses
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - --namespace
+          - kube-system
+          - get
+          - service
+          - traefik
+          - --output=jsonpath={.spec.externalTrafficPolicy}
+      changed_when: false
+      register: k3s_traefik_traffic_policy
+      retries: 30
+      delay: 2
+      until: k3s_traefik_traffic_policy.rc == 0 and k3s_traefik_traffic_policy.stdout == 'Local'
+
+    - name: Wait for the Traefik DaemonSet
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - --namespace
+          - kube-system
+          - get
+          - daemonset
+          - traefik
+      changed_when: false
+      register: k3s_traefik_daemonset
+      retries: 30
+      delay: 2
+      until: k3s_traefik_daemonset.rc == 0
+
+    - name: Wait for the Traefik DaemonSet rollout
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - --namespace
+          - kube-system
+          - rollout
+          - status
+          - daemonset/traefik
+          - --timeout=180s
       changed_when: false
 
     - name: Read the K3s admin kubeconfig from the master
