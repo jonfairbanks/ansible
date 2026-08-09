@@ -214,3 +214,48 @@ To retrieve it directly before then, use a trusted terminal:
 sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' | base64 --decode; echo
 ```
+
+## `longhorn.yaml`
+
+`longhorn.yaml` installs the host prerequisites on every Debian-family K3s node,
+then creates an Argo CD Application for the pinned Longhorn Helm chart. Argo CD
+automatically reconciles drift, but pruning is deliberately disabled because
+deleting Longhorn resources can destroy persistent data.
+
+Install Argo CD first, then install Longhorn:
+
+```sh
+ansible-playbook k3s/argocd.yaml
+ansible-playbook k3s/longhorn.yaml
+```
+
+The default Longhorn version is `v1.12.0`. The playbook selects up to three
+replicas based on the number of hosts in the `k3s` inventory group and stores
+data under `/var/lib/longhorn` on each node. Override either value explicitly
+when needed:
+
+```sh
+ansible-playbook k3s/longhorn.yaml \
+  -e 'longhorn_replica_count=2' \
+  -e 'longhorn_data_path=/mnt/longhorn'
+```
+
+Longhorn becomes the default StorageClass, while K3s's bundled `local-path`
+class remains available for workloads that explicitly set
+`storageClassName: local-path`. To install Longhorn without making it the
+default:
+
+```sh
+ansible-playbook k3s/longhorn.yaml \
+  -e 'longhorn_default_storage_class=false'
+```
+
+The Longhorn UI is not exposed through Ingress because it does not provide
+built-in authentication. Access it temporarily from a trusted workstation:
+
+```sh
+kubectl -n longhorn-system port-forward service/longhorn-frontend 8081:80
+```
+
+Do not delete the Argo CD Application as an uninstall method. Longhorn requires
+its documented uninstall procedure to avoid dangling resources and data loss.
