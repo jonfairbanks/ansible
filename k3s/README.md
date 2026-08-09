@@ -65,6 +65,58 @@ To label existing workers without rerunning installation tasks:
 ansible-playbook k3s/k3s.yaml --tags node-labels
 ```
 
+## Traefik Dashboard
+
+`k3s.yaml` can expose a Basic Auth-protected Traefik dashboard at
+`http://traefik.home.arpa/dashboard/`, but the route is disabled by default.
+K3s's bundled Traefik chart already enables the internal dashboard; when
+enabled, the playbook creates the route and a credential Secret only when one
+does not already exist, so reruns do not replace the password. On Debian or
+Ubuntu K3s nodes, the opt-in path installs `apache2-utils` to create the bcrypt
+password hash.
+
+Enable it explicitly:
+
+```sh
+ansible-playbook k3s/k3s.yaml \
+  -e 'traefik_dashboard_enabled=true'
+```
+
+To display the generated password during a trusted interactive bootstrap, opt
+in explicitly. Do not use this option in CI or retained logs.
+
+```sh
+ansible-playbook k3s/k3s.yaml \
+  -e 'traefik_dashboard_enabled=true' \
+  -e 'traefik_dashboard_display_initial_credentials=true'
+```
+
+Set a known initial password instead of generating one:
+
+```sh
+ansible-playbook k3s/k3s.yaml \
+  -e 'traefik_dashboard_enabled=true' \
+  -e 'traefik_dashboard_password=replace-with-a-strong-password'
+```
+
+Change the hostname or skip dashboard bootstrap when needed:
+
+```sh
+ansible-playbook k3s/k3s.yaml \
+  -e 'traefik_dashboard_hostname=traefik.example.internal'
+
+ansible-playbook k3s/k3s.yaml \
+  -e 'traefik_dashboard_enabled=false'
+```
+
+Setting `traefik_dashboard_enabled=false` does not delete a route that was
+previously created; remove that route explicitly if you no longer want to
+expose the dashboard.
+
+The route uses the HTTP `web` entry point to match the existing local ingress
+pattern. Basic Auth protects access but does not encrypt the password in
+transit; move it to HTTPS before using it beyond a trusted local network.
+
 For an additional API certificate name, such as a load balancer DNS name, pass
 it when installing the server:
 
