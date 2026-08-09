@@ -16,6 +16,12 @@
     argocd_hostname: argocd.home.arpa
     argocd_ingress_manifest_path: /etc/rancher/k3s/argocd-ingress.yaml
     argocd_display_initial_credentials: false
+    argocd_state_repository_enabled: false
+    argocd_state_repository_name: cluster-state
+    argocd_state_repository_url: git@github.com:jonfairbanks/cluster-state.git
+    argocd_state_repository_ssh_private_key: ''
+    argocd_state_repository_vault_file: "{{ playbook_dir }}/argocd-vault.yaml"
+    argocd_state_repository_manifest_path: /tmp/argocd-state-repository.yaml
     argocd_manifest_path: >-
       {{ 'manifests/ha/install.yaml'
       if argocd_install_profile == 'ha'
@@ -24,6 +30,12 @@
       https://raw.githubusercontent.com/argoproj/argo-cd/{{ argocd_version }}/{{ argocd_manifest_path }}
 
   pre_tasks:
+    - name: Load state repository credentials from Ansible Vault
+      ansible.builtin.include_vars:
+        file: "{{ argocd_state_repository_vault_file }}"
+      no_log: true
+      when: argocd_state_repository_enabled | bool
+
     - name: Require exactly one K3s server in the inventory
       ansible.builtin.assert:
         that:
@@ -49,6 +61,18 @@
         that:
           - argocd_hostname is match('^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$')
         fail_msg: Set argocd_hostname to a fully qualified hostname, for example argocd.home.arpa.
+
+    - name: Require state repository credentials when enabled
+      ansible.builtin.assert:
+        that:
+          - argocd_state_repository_name is match('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+          - argocd_state_repository_url is match('^git@[^:]+:.+\\.git$')
+          - argocd_state_repository_ssh_private_key | length > 0
+        fail_msg: >-
+          Set argocd_state_repository_ssh_private_key from an Ansible
+          Vault-encrypted variable before enabling the state repository.
+      no_log: true
+      when: argocd_state_repository_enabled | bool
 
     - name: Check that K3s is installed
       ansible.builtin.stat:
@@ -195,6 +219,63 @@
           - "{{ argocd_namespace }}"
           - --timeout=300s
       changed_when: false
+
+    - name: Register the Argo CD state repository
+      block:
+        - name: Write the Argo CD state repository credentials
+          ansible.builtin.copy:
+            dest: "{{ argocd_state_repository_manifest_path }}"
+            owner: root
+            group: root
+            mode: '0600'
+            content: |
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: {{ argocd_state_repository_name }}
+                namespace: {{ argocd_namespace }}
+                labels:
+                  argocd.argoproj.io/secret-type: repository
+              stringData:
+                type: git
+                url: {{ argocd_state_repository_url }}
+                sshPrivateKey: |
+              {{ argocd_state_repository_ssh_private_key | indent(6, true) }}
+
+        - name: Apply the Argo CD state repository credentials
+          ansible.builtin.command:
+            argv:
+              - /usr/local/bin/k3s
+              - kubectl
+              - apply
+              - --namespace
+              - "{{ argocd_namespace }}"
+              - --filename
+              - "{{ argocd_state_repository_manifest_path }}"
+          register: argocd_state_repository_apply
+          changed_when: >-
+            'created' in argocd_state_repository_apply.stdout or
+            'configured' in argocd_state_repository_apply.stdout
+      always:
+        - name: Remove the temporary Argo CD state repository manifest
+          ansible.builtin.file:
+            path: "{{ argocd_state_repository_manifest_path }}"
+            state: absent
+      no_log: true
+      when: argocd_state_repository_enabled | bool
+
+    - name: Verify the Argo CD state repository registration
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - get
+          - secret
+          - "{{ argocd_state_repository_name }}"
+          - --namespace
+          - "{{ argocd_namespace }}"
+      changed_when: false
+      when: argocd_state_repository_enabled | bool
 
     - name: Read the initial Argo CD admin password
       ansible.builtin.command:
