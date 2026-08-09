@@ -30,10 +30,34 @@ When adding a worker later, add it to the local `k3s_workers` inventory group an
 rerun `k3s.yaml`. The playbook reads the server token in memory and uses it to
 join the new worker.
 
+## Kubeconfig Output
+
+After the master API is ready, `k3s.yaml` writes its admin kubeconfig to
+`~/.kube/config` on the Ansible controller. It replaces the master loopback
+endpoint with `k3s_server_url`, sets mode `0600`, and creates a backup before
+overwriting an existing config.
+
+The exported file grants cluster-admin access. Keep it private and use it with:
+
+```sh
+kubectl get nodes
+```
+
 ## `k3s.yaml`
 
 ```sh
 ansible-playbook k3s/k3s.yaml
+```
+
+After an agent joins, the playbook applies the standard
+`node-role.kubernetes.io/worker` label so `kubectl get nodes` displays its
+`worker` role. By default, it uses the worker's system hostname. Set
+`k3s_node_name` for a worker when its Kubernetes node name differs.
+
+To label existing workers without rerunning installation tasks:
+
+```sh
+ansible-playbook k3s/k3s.yaml --tags node-labels
 ```
 
 For an additional API certificate name, such as a load balancer DNS name, pass
@@ -62,8 +86,16 @@ ansible-playbook k3s/firewall.yaml \
   -e 'k3s_flannel_backend=wireguard-native'
 ```
 
-To permit Kubernetes API access from an additional trusted source, define
-`k3s_api_allowed_sources` in the ignored local K3s inventory. Keep local
+To permit `kubectl` access from the Ansible controller or another trusted
+client network, define `k3s_api_allowed_sources` in the ignored local
+inventory, then rerun the firewall playbook:
+
+```ini
+[k3s:vars]
+k3s_api_allowed_sources=["192.0.2.0/24"]
+```
+
+Replace the example subnet with the trusted client's LAN subnet. Keep local
 network addresses out of the committed example inventory.
 
 ## `argocd.yaml`

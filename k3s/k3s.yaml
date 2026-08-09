@@ -21,6 +21,14 @@
         fail_msg: Define exactly one host in the [k3s_master] inventory group.
       run_once: true
 
+    - name: Require a K3s API URL for the exported kubeconfig
+      ansible.builtin.assert:
+        that:
+          - k3s_server_url is defined
+          - k3s_server_url is match('^https://.+:6443$')
+        fail_msg: Set k3s_server_url to the master API URL in the local inventory.
+      run_once: true
+
     - name: Check for the K3s node token
       ansible.builtin.stat:
         path: /var/lib/rancher/k3s/server/node-token
@@ -111,6 +119,32 @@
       ansible.builtin.command: systemctl is-active k3s
       changed_when: false
 
+    - name: Read the K3s admin kubeconfig from the master
+      ansible.builtin.slurp:
+        src: /etc/rancher/k3s/k3s.yaml
+      register: k3s_admin_kubeconfig
+      no_log: true
+
+    - name: Create the controller kubeconfig directory
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'HOME') }}/.kube"
+        state: directory
+        mode: '0700'
+      delegate_to: localhost
+      become: false
+
+    - name: Write the K3s admin kubeconfig on the controller
+      ansible.builtin.copy:
+        dest: "{{ lookup('env', 'HOME') }}/.kube/config"
+        content: >-
+          {{ k3s_admin_kubeconfig.content | b64decode |
+          regex_replace('https://127.0.0.1:6443', k3s_server_url) }}
+        mode: '0600'
+        backup: true
+      delegate_to: localhost
+      become: false
+      no_log: true
+
   handlers:
     - name: Restart K3s server
       ansible.builtin.systemd_service:
@@ -125,8 +159,8 @@
   vars:
     k3s_install_script_url: https://get.k3s.io
     k3s_install_script_path: /tmp/k3s-install.sh
-    k3s_server_url: ''
     k3s_agent_extra_args: ''
+    k3s_worker_node_name: "{{ k3s_node_name | default(ansible_facts['hostname']) }}"
 
   pre_tasks:
     - name: Require a K3s server URL
@@ -200,6 +234,37 @@
     - name: Verify the K3s agent service is active
       ansible.builtin.command: systemctl is-active k3s-agent
       changed_when: false
+
+    - name: Wait for the worker node to register with the server
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - get
+          - node
+          - "{{ k3s_worker_node_name }}"
+      changed_when: false
+      register: k3s_worker_node
+      retries: 30
+      delay: 2
+      until: k3s_worker_node.rc == 0
+      delegate_to: "{{ groups['k3s_master'][0] }}"
+      tags: node-labels
+
+    - name: Label the registered node as a worker
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - label
+          - node
+          - "{{ k3s_worker_node_name }}"
+          - node-role.kubernetes.io/worker=
+          - --overwrite
+      register: k3s_worker_label
+      changed_when: "'not labeled' not in k3s_worker_label.stdout"
+      delegate_to: "{{ groups['k3s_master'][0] }}"
+      tags: node-labels
 
   handlers:
     - name: Restart K3s agent
