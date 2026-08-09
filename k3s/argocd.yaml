@@ -13,6 +13,9 @@
     argocd_version: v3.4.2
     argocd_namespace: argocd
     argocd_install_profile: standard
+    argocd_hostname: argocd.home.arpa
+    argocd_ingress_manifest_path: /etc/rancher/k3s/argocd-ingress.yaml
+    argocd_display_initial_credentials: false
     argocd_manifest_path: >-
       {{ 'manifests/ha/install.yaml'
       if argocd_install_profile == 'ha'
@@ -40,6 +43,12 @@
         that:
           - argocd_install_profile in ['standard', 'ha']
         fail_msg: Set argocd_install_profile to standard or ha.
+
+    - name: Require a valid Argo CD hostname
+      ansible.builtin.assert:
+        that:
+          - argocd_hostname is match('^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$')
+        fail_msg: Set argocd_hostname to a fully qualified hostname, for example argocd.home.arpa.
 
     - name: Check that K3s is installed
       ansible.builtin.stat:
@@ -95,6 +104,72 @@
       changed_when: >-
         'created' in argocd_apply.stdout or 'configured' in argocd_apply.stdout
 
+    - name: Write the Argo CD Traefik ingress manifest
+      ansible.builtin.copy:
+        dest: "{{ argocd_ingress_manifest_path }}"
+        owner: root
+        group: root
+        mode: '0600'
+        content: |
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: argocd-server
+            namespace: {{ argocd_namespace }}
+          spec:
+            ingressClassName: traefik
+            rules:
+              - host: {{ argocd_hostname }}
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: argocd-server-ingress
+                          port:
+                            number: 443
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: argocd-server-ingress
+            namespace: {{ argocd_namespace }}
+            annotations:
+              traefik.ingress.kubernetes.io/service.serversscheme: https
+              traefik.ingress.kubernetes.io/service.serverstransport: {{ argocd_namespace }}-argocd-server-https@kubernetescrd
+          spec:
+            selector:
+              app.kubernetes.io/name: argocd-server
+            ports:
+              - name: https
+                port: 443
+                protocol: TCP
+                targetPort: 8080
+          ---
+          apiVersion: traefik.io/v1alpha1
+          kind: ServersTransport
+          metadata:
+            name: argocd-server-https
+            namespace: {{ argocd_namespace }}
+          spec:
+            # Argo CD's upstream manifest uses a self-signed server certificate.
+            insecureSkipVerify: true
+
+    - name: Apply the Argo CD Traefik ingress
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - apply
+          - --namespace
+          - "{{ argocd_namespace }}"
+          - --filename
+          - "{{ argocd_ingress_manifest_path }}"
+      register: argocd_ingress_apply
+      changed_when: >-
+        'created' in argocd_ingress_apply.stdout or 'configured' in argocd_ingress_apply.stdout
+
     - name: Wait for the Argo CD server deployment
       ansible.builtin.command:
         argv:
@@ -120,3 +195,48 @@
           - "{{ argocd_namespace }}"
           - --timeout=300s
       changed_when: false
+
+    - name: Read the initial Argo CD admin password
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - get
+          - secret
+          - argocd-initial-admin-secret
+          - --namespace
+          - "{{ argocd_namespace }}"
+          - --output
+          - jsonpath={.data.password}
+      register: argocd_initial_admin_password_encoded
+      changed_when: false
+      failed_when: false
+      no_log: true
+      when: argocd_display_initial_credentials | bool
+
+    - name: Decode the initial Argo CD admin password
+      ansible.builtin.set_fact:
+        argocd_initial_admin_password: >-
+          {{ argocd_initial_admin_password_encoded.stdout | b64decode }}
+      no_log: true
+      when:
+        - argocd_display_initial_credentials | bool
+        - argocd_initial_admin_password_encoded.rc == 0
+
+    - name: Report when initial Argo CD credentials are unavailable
+      ansible.builtin.debug:
+        msg: >-
+          The initial Argo CD credentials are unavailable. They may already have
+          been removed after the first successful login.
+      when:
+        - argocd_display_initial_credentials | bool
+        - argocd_initial_admin_password_encoded.rc != 0
+
+    - name: Display initial Argo CD credentials
+      ansible.builtin.debug:
+        msg:
+          username: admin
+          password: "{{ argocd_initial_admin_password }}"
+      when:
+        - argocd_display_initial_credentials | bool
+        - argocd_initial_admin_password_encoded.rc == 0
