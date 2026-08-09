@@ -11,6 +11,15 @@
     k3s_install_script_url: https://get.k3s.io
     k3s_install_script_path: /tmp/k3s-install.sh
     k3s_server_extra_args: ''
+    traefik_dashboard_enabled: false
+    traefik_dashboard_namespace: kube-system
+    traefik_dashboard_hostname: traefik.home.arpa
+    traefik_dashboard_username: admin
+    traefik_dashboard_password: ''
+    traefik_dashboard_auth_secret_name: traefik-dashboard-auth
+    traefik_dashboard_manifest_path: /etc/rancher/k3s/traefik-dashboard.yaml
+    traefik_dashboard_htpasswd_package: apache2-utils
+    traefik_dashboard_display_initial_credentials: false
 
   pre_tasks:
     - name: Require exactly one K3s server in the inventory
@@ -28,6 +37,16 @@
           - k3s_server_url is match('^https://.+:6443$')
         fail_msg: Set k3s_server_url to the master API URL in the local inventory.
       run_once: true
+
+    - name: Require a valid Traefik dashboard hostname
+      ansible.builtin.assert:
+        that:
+          - traefik_dashboard_hostname is match('^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$')
+          - traefik_dashboard_username | length > 0
+        fail_msg: >-
+          Set traefik_dashboard_hostname to a fully qualified hostname and
+          traefik_dashboard_username to a non-empty value.
+      when: traefik_dashboard_enabled | bool
 
     - name: Check for the K3s node token
       ansible.builtin.stat:
@@ -192,6 +211,156 @@
           - daemonset/traefik
           - --timeout=180s
       changed_when: false
+
+    - name: Verify that the bundled Traefik dashboard is enabled
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - --namespace
+          - "{{ traefik_dashboard_namespace }}"
+          - get
+          - daemonset
+          - traefik
+          - --output=jsonpath={.spec.template.spec.containers[0].args}
+      register: traefik_dashboard_args
+      changed_when: false
+      when: traefik_dashboard_enabled | bool
+
+    - name: Require the bundled Traefik dashboard
+      ansible.builtin.assert:
+        that:
+          - >-
+            '--api.dashboard=true' in traefik_dashboard_args.stdout or
+            '--api=true' in traefik_dashboard_args.stdout
+        fail_msg: >-
+          The bundled Traefik dashboard is disabled. Enable Traefik's API and
+          dashboard in the K3s HelmChartConfig before enabling its route.
+      when: traefik_dashboard_enabled | bool
+
+    - name: Install the Traefik dashboard credential utility
+      ansible.builtin.package:
+        name: "{{ traefik_dashboard_htpasswd_package }}"
+        state: present
+      when: traefik_dashboard_enabled | bool
+
+    - name: Check whether Traefik dashboard credentials already exist
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - --namespace
+          - "{{ traefik_dashboard_namespace }}"
+          - get
+          - secret
+          - "{{ traefik_dashboard_auth_secret_name }}"
+      register: traefik_dashboard_secret
+      changed_when: false
+      failed_when: >-
+        traefik_dashboard_secret.rc != 0 and
+        'NotFound' not in traefik_dashboard_secret.stderr
+      when: traefik_dashboard_enabled | bool
+
+    - name: Generate initial Traefik dashboard credentials
+      ansible.builtin.set_fact:
+        traefik_dashboard_initial_password: >-
+          {{ traefik_dashboard_password | default(
+          lookup('ansible.builtin.password', '/dev/null length=32 chars=ascii_letters,digits'), true) }}
+      no_log: true
+      when:
+        - traefik_dashboard_enabled | bool
+        - traefik_dashboard_secret.rc != 0
+
+    - name: Hash initial Traefik dashboard credentials
+      ansible.builtin.command:
+        argv:
+          - htpasswd
+          - -nbB
+          - "{{ traefik_dashboard_username }}"
+          - "{{ traefik_dashboard_initial_password }}"
+      register: traefik_dashboard_htpasswd
+      changed_when: false
+      no_log: true
+      when:
+        - traefik_dashboard_enabled | bool
+        - traefik_dashboard_secret.rc != 0
+
+    - name: Create initial Traefik dashboard credentials
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - --namespace
+          - "{{ traefik_dashboard_namespace }}"
+          - create
+          - secret
+          - generic
+          - "{{ traefik_dashboard_auth_secret_name }}"
+          - "--from-literal=users={{ traefik_dashboard_htpasswd.stdout }}"
+      no_log: true
+      when:
+        - traefik_dashboard_enabled | bool
+        - traefik_dashboard_secret.rc != 0
+
+    - name: Write the Traefik dashboard route manifest
+      ansible.builtin.copy:
+        dest: "{{ traefik_dashboard_manifest_path }}"
+        owner: root
+        group: root
+        mode: '0600'
+        content: |
+          apiVersion: traefik.io/v1alpha1
+          kind: Middleware
+          metadata:
+            name: traefik-dashboard-auth
+            namespace: {{ traefik_dashboard_namespace }}
+          spec:
+            basicAuth:
+              secret: {{ traefik_dashboard_auth_secret_name }}
+              removeHeader: true
+          ---
+          apiVersion: traefik.io/v1alpha1
+          kind: IngressRoute
+          metadata:
+            name: traefik-dashboard
+            namespace: {{ traefik_dashboard_namespace }}
+          spec:
+            entryPoints:
+              - web
+            routes:
+              - kind: Rule
+                match: Host(`{{ traefik_dashboard_hostname }}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))
+                middlewares:
+                  - name: traefik-dashboard-auth
+                services:
+                  - kind: TraefikService
+                    name: api@internal
+      when: traefik_dashboard_enabled | bool
+
+    - name: Apply the Traefik dashboard route
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - apply
+          - --filename
+          - "{{ traefik_dashboard_manifest_path }}"
+      register: traefik_dashboard_apply
+      changed_when: >-
+        'created' in traefik_dashboard_apply.stdout or
+        'configured' in traefik_dashboard_apply.stdout
+      when: traefik_dashboard_enabled | bool
+
+    - name: Display initial Traefik dashboard credentials
+      ansible.builtin.debug:
+        msg: >-
+          Traefik dashboard: http://{{ traefik_dashboard_hostname }}/dashboard/
+          username={{ traefik_dashboard_username }}
+          password={{ traefik_dashboard_initial_password }}
+      when:
+        - traefik_dashboard_enabled | bool
+        - traefik_dashboard_secret.rc != 0
+        - traefik_dashboard_display_initial_credentials | bool
 
     - name: Read the K3s admin kubeconfig from the master
       ansible.builtin.slurp:
