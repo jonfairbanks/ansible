@@ -3,7 +3,7 @@
   hosts: "{{ target_hosts | default('managed_hosts') }}"
   become: true
   gather_facts: true
-  serial: 1
+  serial: "{{ update_batch_size | default('100%') }}"
   vars:
     reboot_if_required: false
 
