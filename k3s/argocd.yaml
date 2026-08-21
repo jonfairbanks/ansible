@@ -128,6 +128,28 @@
       changed_when: >-
         'created' in argocd_apply.stdout or 'configured' in argocd_apply.stdout
 
+    - name: Mark Argo CD metric services for Grafana Alloy discovery
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - annotate
+          - --namespace
+          - "{{ argocd_namespace }}"
+          - service
+          - "{{ item }}"
+          - k8s.grafana.com/scrape=true
+          - k8s.grafana.com/metrics.portName=metrics
+          - --overwrite
+      loop:
+        - argocd-metrics
+        - argocd-applicationset-controller
+        - argocd-notifications-controller-metrics
+        - argocd-repo-server
+        - argocd-server-metrics
+      register: argocd_metrics_annotation
+      changed_when: "'annotated' in argocd_metrics_annotation.stdout"
+
     - name: Write the Argo CD Traefik ingress manifest
       ansible.builtin.copy:
         dest: "{{ argocd_ingress_manifest_path }}"
