@@ -175,7 +175,9 @@ network addresses out of the committed example inventory.
 `argocd.yaml` installs the official multi-tenant Argo CD manifest on the K3s
 server. It uses K3s's bundled `kubectl`, pins the Argo CD release, creates a
 Traefik Ingress for `argocd.home.arpa`, and waits for the API server and
-application controller to be ready.
+application controller to be ready. The notifications controller defaults to
+`warn` logging so routine trigger evaluations are not emitted; override
+`argocd_notifications_log_level` when temporary INFO or DEBUG output is needed.
 
 ```sh
 ansible-playbook k3s/argocd.yaml
