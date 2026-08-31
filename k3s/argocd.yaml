@@ -13,6 +13,7 @@
     argocd_version: v3.4.2
     argocd_namespace: argocd
     argocd_install_profile: standard
+    argocd_notifications_log_level: warn
     argocd_hostname: argocd.home.arpa
     argocd_ingress_manifest_path: /etc/rancher/k3s/argocd-ingress.yaml
     argocd_display_initial_credentials: false
@@ -55,6 +56,13 @@
         that:
           - argocd_install_profile in ['standard', 'ha']
         fail_msg: Set argocd_install_profile to standard or ha.
+
+    - name: Require a supported Argo CD notifications log level
+      ansible.builtin.assert:
+        that:
+          - argocd_notifications_log_level in ['debug', 'info', 'warn', 'error']
+        fail_msg: >-
+          Set argocd_notifications_log_level to debug, info, warn, or error.
 
     - name: Require a valid Argo CD hostname
       ansible.builtin.assert:
@@ -127,6 +135,69 @@
       register: argocd_apply
       changed_when: >-
         'created' in argocd_apply.stdout or 'configured' in argocd_apply.stdout
+
+    - name: Read the Argo CD notifications log level
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - get
+          - configmap
+          - argocd-cmd-params-cm
+          - --namespace
+          - "{{ argocd_namespace }}"
+          - --output
+          - jsonpath={.data.notificationscontroller\.log\.level}
+      register: argocd_notifications_log_level_current
+      changed_when: false
+
+    - name: Configure the Argo CD notifications log level
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - patch
+          - configmap
+          - argocd-cmd-params-cm
+          - --namespace
+          - "{{ argocd_namespace }}"
+          - --type
+          - merge
+          - --patch
+          - >-
+            {"data":{"notificationscontroller.log.level":"{{ argocd_notifications_log_level }}"}}
+      register: argocd_notifications_log_level_patch
+      changed_when: true
+      when: >-
+        argocd_notifications_log_level_current.stdout !=
+        argocd_notifications_log_level
+
+    - name: Restart the Argo CD notifications controller
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - rollout
+          - restart
+          - deployment/argocd-notifications-controller
+          - --namespace
+          - "{{ argocd_namespace }}"
+      when: argocd_notifications_log_level_patch is changed
+      changed_when: true
+
+    - name: Wait for the Argo CD notifications controller
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - rollout
+          - status
+          - deployment/argocd-notifications-controller
+          - --namespace
+          - "{{ argocd_namespace }}"
+          - --timeout=300s
+      when: argocd_notifications_log_level_patch is changed
+      changed_when: false
 
     - name: Mark Argo CD metric services for Grafana Alloy discovery
       ansible.builtin.command:
