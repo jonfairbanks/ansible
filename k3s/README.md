@@ -49,6 +49,21 @@ kubectl get nodes
 ansible-playbook k3s/k3s.yaml
 ```
 
+### Version pinning and upgrades
+
+The server and every worker use the exact release in `k3s/versions.yaml`:
+
+```yaml
+k3s_version: v1.36.3+k3s1
+```
+
+The playbook passes this value to the official installer as
+`INSTALL_K3S_VERSION`, verifies the installed binary afterward, and only reruns
+the installer when a node does not match the pin. To upgrade, review the K3s
+release notes and Kubernetes version-skew requirements, change this single
+value in a pull request, and then run the playbook after it merges. The server
+is reconciled first; workers are upgraded and verified Ready one at a time.
+
 After an agent joins, the playbook applies the standard
 `node-role.kubernetes.io/worker` label so `kubectl get nodes` displays its
 `worker` role. By default, it uses the worker's system hostname. Set

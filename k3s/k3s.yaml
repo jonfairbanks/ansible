@@ -7,6 +7,8 @@
   become: true
   gather_facts: true
   serial: 1
+  vars_files:
+    - versions.yaml
   vars:
     k3s_install_script_url: https://get.k3s.io
     k3s_install_script_path: /tmp/k3s-install.sh
@@ -22,6 +24,13 @@
     traefik_dashboard_display_initial_credentials: false
 
   pre_tasks:
+    - name: Require a pinned K3s version
+      ansible.builtin.assert:
+        that:
+          - k3s_version is match('^v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+$')
+        fail_msg: Set k3s_version in k3s/versions.yaml to an exact K3s release.
+      run_once: true
+
     - name: Require exactly one K3s server in the inventory
       ansible.builtin.assert:
         that:
@@ -57,6 +66,15 @@
       ansible.builtin.stat:
         path: /usr/local/bin/k3s
       register: k3s_server_binary
+
+    - name: Read the installed K3s server version
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - --version
+      register: k3s_server_installed_version
+      changed_when: false
+      when: k3s_server_binary.stat.exists
 
     - name: Require the node token for an existing K3s server
       ansible.builtin.assert:
@@ -118,11 +136,25 @@
     - name: Install K3s server
       ansible.builtin.command:
         cmd: "{{ k3s_install_script_path }}"
-        creates: /usr/local/bin/k3s
       environment:
         K3S_TOKEN: "{{ k3s_server_token }}"
         INSTALL_K3S_EXEC: "server --write-kubeconfig-mode=0644 {{ k3s_server_extra_args }}"
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+      when: >-
+        not ((k3s_server_installed_version.stdout | default('')) is match(
+        '^k3s version ' ~ (k3s_version | regex_escape) ~ '(\s|$)'))
       no_log: true
+
+    - name: Verify the pinned K3s server version
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - --version
+      register: k3s_server_version
+      changed_when: false
+      failed_when: >-
+        not (k3s_server_version.stdout is match(
+        '^k3s version ' ~ (k3s_version | regex_escape) ~ '(\s|$)'))
 
     - name: Create the K3s packaged-manifest directory
       ansible.builtin.file:
@@ -399,6 +431,9 @@
   hosts: k3s_workers
   become: true
   gather_facts: true
+  serial: 1
+  vars_files:
+    - versions.yaml
   vars:
     k3s_install_script_url: https://get.k3s.io
     k3s_install_script_path: /tmp/k3s-install.sh
@@ -406,6 +441,13 @@
     k3s_worker_node_name: "{{ k3s_node_name | default(ansible_facts['hostname']) }}"
 
   pre_tasks:
+    - name: Require a pinned K3s version
+      ansible.builtin.assert:
+        that:
+          - k3s_version is match('^v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+$')
+        fail_msg: Set k3s_version in k3s/versions.yaml to an exact K3s release.
+      run_once: true
+
     - name: Require a K3s server URL
       ansible.builtin.assert:
         that:
@@ -424,6 +466,20 @@
       ansible.builtin.set_fact:
         k3s_join_token: "{{ k3s_node_token.content | b64decode | trim }}"
       no_log: true
+
+    - name: Check for an existing K3s agent installation
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s
+      register: k3s_agent_binary
+
+    - name: Read the installed K3s agent version
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - --version
+      register: k3s_agent_installed_version
+      changed_when: false
+      when: k3s_agent_binary.stat.exists
 
   tasks:
     - name: Wait until the K3s server API is reachable
@@ -464,12 +520,26 @@
     - name: Install K3s agent
       ansible.builtin.command:
         cmd: "{{ k3s_install_script_path }}"
-        creates: /usr/local/bin/k3s-agent
       environment:
         K3S_URL: "{{ k3s_server_url }}"
         K3S_TOKEN: "{{ k3s_join_token }}"
         INSTALL_K3S_EXEC: "agent {{ k3s_agent_extra_args }}"
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+      when: >-
+        not ((k3s_agent_installed_version.stdout | default('')) is match(
+        '^k3s version ' ~ (k3s_version | regex_escape) ~ '(\s|$)'))
       no_log: true
+
+    - name: Verify the pinned K3s agent version
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - --version
+      register: k3s_agent_version
+      changed_when: false
+      failed_when: >-
+        not (k3s_agent_version.stdout is match(
+        '^k3s version ' ~ (k3s_version | regex_escape) ~ '(\s|$)'))
 
     - name: Apply K3s agent configuration changes
       ansible.builtin.meta: flush_handlers
@@ -491,6 +561,19 @@
       retries: 30
       delay: 2
       until: k3s_worker_node.rc == 0
+      delegate_to: "{{ groups['k3s_master'][0] }}"
+      tags: node-labels
+
+    - name: Wait for the worker node to become ready
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - wait
+          - --for=condition=Ready
+          - "node/{{ k3s_worker_node_name }}"
+          - --timeout=180s
+      changed_when: false
       delegate_to: "{{ groups['k3s_master'][0] }}"
       tags: node-labels
 
