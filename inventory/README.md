@@ -83,3 +83,7 @@ Set `ansible_user` in the local ignored inventory. With the default
 ```sh
 ansible-playbook system/set-timezone.yaml --limit <host-alias>
 ```
+
+Set `longhorn_backup_host` under `[k3s:vars]` to the hostname or IP address of
+the external SMB server before running `k3s/longhorn.yaml`. Keep the real local
+infrastructure address in the ignored `hosts.ini`, not in committed playbooks.

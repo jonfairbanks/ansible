@@ -234,7 +234,7 @@ sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret \
 
 `longhorn.yaml` installs the host prerequisites on every Debian-family K3s node.
 That includes iSCSI and NFS clients for Longhorn volumes and the CIFS mount
-helper used by the external backup target at `192.168.4.2`. The playbook also
+helper used by the external backup target. The playbook also
 stops and masks unused `multipathd` units after confirming the hosts have no
 active multipath maps; Longhorn volumes must not be claimed by multipath.
 The Longhorn Argo CD Application and its Helm values live in the separate
@@ -246,7 +246,8 @@ Install the host prerequisites before merging the Longhorn `cluster-state` PR:
 ansible-playbook k3s/longhorn.yaml
 ```
 
-The playbook verifies TCP/445 connectivity from every node to the backup host.
+Set `longhorn_backup_host` under `[k3s:vars]` in the ignored local inventory.
+The playbook verifies TCP/445 connectivity from every node to that backup host.
 It does not mount the share or handle SMB credentials; Vault and the Vault
 Secrets Operator provide those credentials to Longhorn from `cluster-state`.
 
