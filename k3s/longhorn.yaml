@@ -10,11 +10,26 @@
   become: true
   gather_facts: true
   vars:
+    longhorn_backup_port: 445
     longhorn_host_packages:
+      - cifs-utils
       - open-iscsi
       - nfs-common
+    longhorn_unused_multipath_units:
+      - multipathd.service
+      - multipathd.socket
 
   pre_tasks:
+    - name: Require the Longhorn backup host
+      ansible.builtin.assert:
+        that:
+          - longhorn_backup_host is defined
+          - longhorn_backup_host | default('') | string | trim | length > 0
+        fail_msg: >-
+          Set longhorn_backup_host in the local inventory to the hostname or IP
+          address of the external SMB backup server.
+      run_once: true
+
     - name: Require Debian-family K3s nodes
       ansible.builtin.assert:
         that:
@@ -41,6 +56,27 @@
         name: "{{ longhorn_host_packages }}"
         state: present
 
+    - name: Discover installed multipath units
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemctl
+          - list-unit-files
+          - "{{ item }}"
+          - --no-legend
+      loop: "{{ longhorn_unused_multipath_units }}"
+      register: longhorn_multipath_units
+      changed_when: false
+      failed_when: false
+
+    - name: Disable unused multipath units
+      ansible.builtin.systemd_service:
+        name: "{{ item.item }}"
+        enabled: false
+        masked: true
+        state: stopped
+      loop: "{{ longhorn_multipath_units.results }}"
+      when: item.stdout | trim | length > 0
+
     - name: Load the iSCSI TCP kernel module
       ansible.builtin.command:
         argv:
@@ -53,3 +89,45 @@
         name: iscsid
         enabled: true
         state: started
+
+    - name: Verify the CIFS mount helper is installed
+      ansible.builtin.stat:
+        path: /usr/sbin/mount.cifs
+      register: longhorn_mount_cifs
+
+    - name: Require an executable CIFS mount helper
+      ansible.builtin.assert:
+        that:
+          - longhorn_mount_cifs.stat.exists
+          - longhorn_mount_cifs.stat.executable
+        fail_msg: cifs-utils did not install an executable /usr/sbin/mount.cifs.
+
+    - name: Verify SMB backup-host connectivity
+      ansible.builtin.wait_for:
+        host: "{{ longhorn_backup_host }}"
+        port: "{{ longhorn_backup_port }}"
+        state: started
+        timeout: 5
+
+    - name: Check whether the multipath client is installed
+      ansible.builtin.stat:
+        path: /usr/sbin/multipath
+      register: longhorn_multipath_client
+
+    - name: Inspect active multipath maps
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/multipath
+          - -ll
+      register: longhorn_multipath_maps
+      changed_when: false
+      when: longhorn_multipath_client.stat.exists
+
+    - name: Require no active multipath maps
+      ansible.builtin.assert:
+        that:
+          - longhorn_multipath_maps.stdout | trim | length == 0
+        fail_msg: >-
+          Active multipath maps remain on this host. Review them before using
+          Longhorn; multipath must not claim Longhorn block devices.
+      when: longhorn_multipath_client.stat.exists
