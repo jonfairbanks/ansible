@@ -255,5 +255,9 @@ It does not mount the share or handle SMB credentials; Vault and the Vault
 Secrets Operator provide those credentials to Longhorn from `cluster-state`.
 
 Do not add Longhorn manifests to this repository or apply them directly: Argo CD
-reconciles them from `cluster-state`. Longhorn's UI remains unexposed until an
-authenticated ingress design is added.
+reconciles them from `cluster-state`. The chart exposes the Longhorn UI at
+`http://longhorn.home.arpa` through Traefik. Its ingress has no TLS or
+authentication middleware; access relies on the trusted private network.
+Keep it private and review authentication and TLS before expanding access.
+The route is owned by
+[`applications/longhorn/longhorn.yaml`](https://github.com/jonfairbanks/cluster-state/blob/main/applications/longhorn/longhorn.yaml).
