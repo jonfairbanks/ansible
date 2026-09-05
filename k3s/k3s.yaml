@@ -76,6 +76,18 @@
       changed_when: false
       when: k3s_server_binary.stat.exists
 
+    - name: Read the installed K3s server command
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - k3s
+          - --property=ExecStart
+          - --value
+      register: k3s_server_exec_start
+      changed_when: false
+      when: k3s_server_binary.stat.exists
+
     - name: Require the node token for an existing K3s server
       ansible.builtin.assert:
         that:
@@ -133,7 +145,7 @@
         group: root
         mode: '0700'
 
-    - name: Install K3s server
+    - name: Install or reconcile K3s server
       ansible.builtin.command:
         cmd: "{{ k3s_install_script_path }}"
       environment:
@@ -142,7 +154,9 @@
         INSTALL_K3S_VERSION: "{{ k3s_version }}"
       when: >-
         not ((k3s_server_installed_version.stdout | default('')) is match(
-        '^k3s version ' ~ (k3s_version | regex_escape) ~ '(\s|$)'))
+        '^k3s version ' ~ (k3s_version | regex_escape) ~ '(\s|$)')) or
+        '--write-kubeconfig-mode=0644' in
+        (k3s_server_exec_start.stdout | default(''))
       no_log: true
 
     - name: Verify the pinned K3s server version
@@ -197,6 +211,14 @@
     - name: Verify the K3s server service is active
       ansible.builtin.command: systemctl is-active k3s
       changed_when: false
+
+    - name: Restrict the K3s admin kubeconfig
+      ansible.builtin.file:
+        path: /etc/rancher/k3s/k3s.yaml
+        state: file
+        owner: root
+        group: root
+        mode: '0600'
 
     - name: Wait for Traefik to preserve client source addresses
       ansible.builtin.command:

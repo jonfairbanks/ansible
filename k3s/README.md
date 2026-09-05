@@ -38,6 +38,11 @@ mode `0600`. After the master API is ready, `k3s.yaml` copies that kubeconfig to
 endpoint with `k3s_server_url`, retains mode `0600`, and creates a backup before
 overwriting an existing config.
 
+Existing servers installed with a conflicting kubeconfig mode are reconciled by
+rerunning the pinned installer once. The playbook also enforces the file mode
+after the server is ready so the exported credential is never left readable by
+other local accounts.
+
 The exported file grants cluster-admin access. Keep it private and use it with:
 
 ```sh
