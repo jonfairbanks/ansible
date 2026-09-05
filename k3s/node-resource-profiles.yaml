@@ -1,0 +1,26 @@
+---
+# Review candidates for the current four-core, approximately 6.7 GiB nodes.
+# See node-resources.md for measurements, limits, and the required canary.
+# An explicit k3s_node_resource_profile overrides the role default per host.
+k3s_node_resource_profiles:
+  server:
+    systemReserved:
+      cpu: 250m
+      memory: 512Mi
+    kubeReserved:
+      cpu: 1750m
+      memory: 3072Mi
+  worker:
+    systemReserved:
+      cpu: 250m
+      memory: 512Mi
+    kubeReserved:
+      cpu: 750m
+      memory: 1536Mi
+
+k3s_node_eviction_hard:
+  memory.available: 512Mi
+  nodefs.available: 10%
+  imagefs.available: 15%
+  nodefs.inodesFree: 5%
+  imagefs.inodesFree: 5%

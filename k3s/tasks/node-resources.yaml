@@ -1,0 +1,95 @@
+---
+- name: Require a single server and a serial resource rollout
+  ansible.builtin.assert:
+    that:
+      - groups.get('k3s_master', []) | length == 1
+      - groups.get('k3s_master', []) | intersect(groups.get('k3s_workers', [])) | length == 0
+      - ansible_play_batch | length == 1
+      - not ansible_check_mode
+    fail_msg: >-
+      Use one server, disjoint worker/server groups, and one host per batch.
+      Review with --syntax-check and --list-hosts; --check cannot verify an
+      effective kubelet configuration after restart.
+
+- name: Require a single-worker canary before broader rollout
+  ansible.builtin.assert:
+    that:
+      - >-
+        (k3s_resource_role == 'worker' and ansible_play_hosts_all | length == 1)
+        or (k3s_node_resources_canary_verified | default(false) | bool)
+    fail_msg: >-
+      Start with --limit <worker-alias>. After observing its scheduled k6 run,
+      backup, and node pressure, set k3s_node_resources_canary_verified=true
+      for the remaining workers and server.
+
+- name: Read the installed K3s version
+  ansible.builtin.command: /usr/local/bin/k3s --version
+  register: node_resources_version
+  changed_when: false
+
+- name: Require K3s kubelet drop-in support
+  ansible.builtin.assert:
+    that:
+      - node_resources_version.stdout is search('k3s version v1\.[0-9]+\.[0-9]+')
+      - (node_resources_version.stdout | regex_search('v1\.[0-9]+\.[0-9]+') | regex_replace('^v', '')) is version('1.32.0', '>=')
+    fail_msg: Kubelet configuration drop-ins require K3s 1.32 or newer.
+
+- name: Select the reviewed profile and Kubernetes node name
+  ansible.builtin.set_fact:
+    node_resources_profile: "{{ k3s_node_resource_profile | default(k3s_node_resource_profiles[k3s_resource_role]) }}"
+    node_resources_name: "{{ k3s_node_name | default(ansible_facts.hostname) }}"
+
+- name: Build the managed kubelet configuration
+  ansible.builtin.set_fact:
+    node_resources_config: >-
+      {{ node_resources_profile | combine({
+        'apiVersion': 'kubelet.config.k8s.io/v1beta1',
+        'kind': 'KubeletConfiguration',
+        'evictionHard': k3s_node_eviction_hard,
+        'enforceNodeAllocatable': ['pods']}) }}
+
+- name: Check projected allocatable against current pod requests and usage
+  ansible.builtin.script:
+    cmd: >-
+      {{ playbook_dir }}/scripts/verify-node-resources.py preflight
+      {{ node_resources_name | quote }} {{ node_resources_config | to_json | quote }}
+    executable: /usr/bin/python3
+  delegate_to: "{{ groups['k3s_master'][0] }}"
+  changed_when: false
+
+- name: Create the K3s kubelet drop-in directory
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Write the managed node-resource drop-in
+  ansible.builtin.copy:
+    dest: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/20-ansible-node-resources.conf
+    content: "{{ node_resources_config | to_nice_yaml(indent=2) }}"
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+  register: node_resources_dropin
+
+- name: Restart K3s when the resource profile changes
+  ansible.builtin.systemd_service:
+    name: "{{ k3s_resource_service }}"
+    state: restarted
+  when: node_resources_dropin.changed
+
+- name: Verify effective reservations and allocatable before the next node
+  ansible.builtin.script:
+    cmd: >-
+      {{ playbook_dir }}/scripts/verify-node-resources.py verify
+      {{ node_resources_name | quote }} {{ node_resources_config | to_json | quote }}
+    executable: /usr/bin/python3
+  delegate_to: "{{ groups['k3s_master'][0] }}"
+  register: node_resources_verified
+  changed_when: false
+  retries: 60
+  delay: 10
+  until: node_resources_verified.rc == 0
