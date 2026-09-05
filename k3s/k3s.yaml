@@ -121,7 +121,7 @@
         mode: '0600'
         content: |
           token: "{{ k3s_server_token }}"
-          write-kubeconfig-mode: "0644"
+          write-kubeconfig-mode: "0600"
       no_log: true
       notify: Restart K3s server
 
@@ -138,7 +138,7 @@
         cmd: "{{ k3s_install_script_path }}"
       environment:
         K3S_TOKEN: "{{ k3s_server_token }}"
-        INSTALL_K3S_EXEC: "server --write-kubeconfig-mode=0644 {{ k3s_server_extra_args }}"
+        INSTALL_K3S_EXEC: "server --write-kubeconfig-mode=0600 {{ k3s_server_extra_args }}"
         INSTALL_K3S_VERSION: "{{ k3s_version }}"
       when: >-
         not ((k3s_server_installed_version.stdout | default('')) is match(

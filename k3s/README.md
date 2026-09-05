@@ -32,9 +32,10 @@ join the new worker.
 
 ## Kubeconfig Output
 
-After the master API is ready, `k3s.yaml` writes its admin kubeconfig to
+The K3s server writes its admin kubeconfig to `/etc/rancher/k3s/k3s.yaml` with
+mode `0600`. After the master API is ready, `k3s.yaml` copies that kubeconfig to
 `~/.kube/config` on the Ansible controller. It replaces the master loopback
-endpoint with `k3s_server_url`, sets mode `0600`, and creates a backup before
+endpoint with `k3s_server_url`, retains mode `0600`, and creates a backup before
 overwriting an existing config.
 
 The exported file grants cluster-admin access. Keep it private and use it with:
