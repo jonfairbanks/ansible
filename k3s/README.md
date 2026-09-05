@@ -6,11 +6,6 @@ It requires one host in the `k3s_master` group and any number of hosts in the
 
 ## Prepare the inventory
 
-For operator-supplied host reservations and eviction safeguards on existing
-nodes, see [Kubelet host reservations](node-resources.md). This separate
-Ansible playbook has no built-in sizes and requires a selected canary before
-broader rollout.
-
 The repository uses the top-level local inventory. From the repository root,
 copy the safe template:
 
@@ -85,6 +80,34 @@ To label existing workers without rerunning installation tasks:
 ```sh
 ansible-playbook k3s/k3s.yaml --tags node-labels
 ```
+
+### Optional kubelet resource settings
+
+Set `k3s_kubelet_args` in inventory host or group variables to pass native
+kubelet arguments through the existing server/agent configuration. Choose
+reservations from measurements of your own nodes; no resource sizes are supplied
+by the playbook. Replace the placeholders below before use:
+
+```yaml
+k3s_kubelet_args:
+  - "system-reserved=cpu=<cpu>,memory=<memory>"
+  - "kube-reserved=cpu=<cpu>,memory=<memory>"
+```
+
+The list also accepts `eviction-hard=...`. Specify the complete set of eviction
+thresholds you intend to retain; omitted thresholds can be reset to zero.
+See [Kubernetes node reservations](https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/)
+for sizing and eviction behavior, and [K3s configuration](https://docs.k3s.io/installation/configuration#kubelet-configuration-files)
+for supported options and precedence. Avoid also setting `--kubelet-arg` in the
+service command line, which overrides the list in the configuration file.
+
+Run the existing playbook with `--limit <inventory-host>` on a representative
+node first. This runs its normal configuration and version reconciliation tasks.
+Check the effective kubelet configuration, node allocatable resources, and
+workload behavior before applying it more broadly. Configuration changes use
+the existing K3s restart handlers and serial execution. Leaving the variable
+unset makes no resource changes on an unconfigured node; removing it or setting
+it to `[]` removes previously managed arguments on the next playbook run.
 
 ## Traefik Dashboard
 

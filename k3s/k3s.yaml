@@ -122,6 +122,9 @@
         content: |
           token: "{{ k3s_server_token }}"
           write-kubeconfig-mode: "0600"
+          {% if k3s_kubelet_args | default([]) %}
+          {{ {'kubelet-arg': k3s_kubelet_args} | to_nice_yaml }}
+          {% endif %}
       no_log: true
       notify: Restart K3s server
 
@@ -510,6 +513,9 @@
         content: |
           server: "{{ k3s_server_url }}"
           token: "{{ k3s_join_token }}"
+          {% if k3s_kubelet_args | default([]) %}
+          {{ {'kubelet-arg': k3s_kubelet_args} | to_nice_yaml }}
+          {% endif %}
       no_log: true
       notify: Restart K3s agent
 
