@@ -6,9 +6,10 @@ It requires one host in the `k3s_master` group and any number of hosts in the
 
 ## Prepare the inventory
 
-For measured host reservations and memory-pressure safeguards on existing
-nodes, see [Kubelet host reservations](node-resources.md). This uses a separate
-Ansible playbook and requires a one-worker canary before broader rollout.
+For operator-supplied host reservations and eviction safeguards on existing
+nodes, see [Kubelet host reservations](node-resources.md). This separate
+Ansible playbook has no built-in sizes and requires a selected canary before
+broader rollout.
 
 The repository uses the top-level local inventory. From the repository root,
 copy the safe template:

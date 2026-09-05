@@ -81,10 +81,35 @@ class NodeResourceTests(unittest.TestCase):
         self.stats['node']['fs']['availableBytes'] = 100
         with self.assertRaises(ValueError): resources.preflight(self.node, self.config, [], self.stats)
 
-    def test_unready_or_cordoned_node_rejected(self):
+    def test_unready_node_rejected_but_existing_cordon_preserved(self):
         resources.require_ready([self.node])
         self.node['spec']['unschedulable'] = True
+        resources.require_ready([self.node])
+        self.node['status']['conditions'][0]['status'] = 'False'
         with self.assertRaises(ValueError): resources.require_ready([self.node])
+
+    def test_operator_can_choose_smaller_memory_buffer(self):
+        self.config['evictionHard']['memory.available'] = '64Mi'
+        projected = resources.projected_allocatable(self.node, self.config)
+        self.assertEqual(projected['memory'], resources.quantity('6080Mi'))
+
+    def test_percentage_memory_and_absolute_disk_thresholds(self):
+        self.config['evictionHard']['memory.available'] = '10%'
+        self.config['evictionHard']['nodefs.available'] = '200'
+        self.config['evictionHard']['imagefs.inodesFree'] = '10'
+        projected = resources.preflight(self.node, self.config, [], self.stats)
+        # Kubelet stores 10% as float32, so its 8Gi buffer is 858993472 bytes.
+        expected = resources.quantity('6Gi') - 858993472
+        self.assertEqual(projected['memory'], expected)
+
+    def test_kubelet_resource_quantity_rounding(self):
+        self.assertEqual(resources.resource_value('0.1m', 'cpu'), resources.quantity('1m'))
+        self.assertEqual(resources.resource_value('0.1Mi', 'memory'), 104858)
+
+    def test_invalid_thresholds_rejected(self):
+        for value in ('0', '0%', '100%', '-1', 'not-sized'):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                resources.threshold_value(value, 1024)
 
 
 if __name__ == '__main__':

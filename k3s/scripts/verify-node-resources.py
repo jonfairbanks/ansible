@@ -3,9 +3,10 @@
 
 import json
 import re
+import struct
 import subprocess
 import sys
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 
 
 def quantity(value):
@@ -22,7 +23,7 @@ def pod_request(pod, resource):
     """Scheduler request including init containers, native sidecars, and overhead."""
     spec = pod['spec']
     def request(container):
-        return quantity(container.get('resources', {}).get('requests', {}).get(resource, 0))
+        return resource_value(container.get('resources', {}).get('requests', {}).get(resource, 0), resource)
     apps = sum(request(c) for c in spec.get('containers', []))
     sidecars = peak = Decimal(0)
     for container in spec.get('initContainers', []):
@@ -35,8 +36,32 @@ def pod_request(pod, resource):
     request_value = max(apps + sidecars, peak)
     pod_level = spec.get('resources', {}).get('requests', {})
     if resource in pod_level:
-        request_value = quantity(pod_level[resource])
-    return request_value + quantity(spec.get('overhead', {}).get(resource, 0))
+        request_value = resource_value(pod_level[resource], resource)
+    return request_value + resource_value(spec.get('overhead', {}).get(resource, 0), resource)
+
+
+def resource_value(value, resource):
+    scale = 1000 if resource == 'cpu' else 1
+    return (quantity(value) * scale).to_integral_value(rounding=ROUND_CEILING) / scale
+
+
+def threshold_value(value, capacity):
+    """Resolve a positive absolute or percentage threshold against its resource."""
+    if str(value).endswith('%'):
+        if not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?%', str(value)):
+            raise ValueError('Invalid percentage threshold')
+        percent = Decimal(str(value)[:-1])
+        if not 0 < percent < 100:
+            raise ValueError('Percentage thresholds must be between 0 and 100')
+        # Match kubelet's float32 percentage parsing/division and byte truncation.
+        f32 = lambda number: struct.unpack('f', struct.pack('f', number))[0]
+        fraction = f32(f32(float(percent)) / 100)
+        result = Decimal(int(float(capacity) * fraction))
+    else:
+        result = quantity(value).to_integral_value(rounding=ROUND_CEILING)
+    if result <= 0:
+        raise ValueError('Eviction thresholds must be positive')
+    return result
 
 
 def projected_allocatable(node, config):
@@ -52,18 +77,11 @@ def projected_allocatable(node, config):
     thresholds = config['evictionHard']
     if set(thresholds) != {'memory.available', 'nodefs.available', 'imagefs.available', 'nodefs.inodesFree', 'imagefs.inodesFree'}:
         raise ValueError('Specify the complete memory, disk, and inode eviction map')
-    if quantity(thresholds['memory.available']) < quantity('100Mi'):
-        raise ValueError('The memory eviction buffer must be at least 100Mi')
-    for name, value in thresholds.items():
-        if name != 'memory.available' and not (
-            re.fullmatch(r'[0-9]+(?:\.[0-9]+)?%', str(value)) and 0 < Decimal(str(value)[:-1]) < 100
-        ):
-            raise ValueError(f'{name} must be a percentage between 0 and 100')
     result = {}
     for resource in ('cpu', 'memory'):
-        capacity = quantity(node['status']['capacity'][resource])
-        reserved = sum(quantity(config[s][resource]) for s in ('systemReserved', 'kubeReserved'))
-        eviction = quantity(thresholds['memory.available']) if resource == 'memory' else 0
+        capacity = resource_value(node['status']['capacity'][resource], resource)
+        reserved = sum(resource_value(config[s][resource], resource) for s in ('systemReserved', 'kubeReserved'))
+        eviction = threshold_value(thresholds['memory.available'], capacity) if resource == 'memory' else 0
         result[resource] = capacity - reserved - eviction
         if result[resource] <= 0:
             raise ValueError(f'Reservations leave no allocatable {resource}')
@@ -73,8 +91,8 @@ def projected_allocatable(node, config):
 def require_ready(nodes):
     for node in nodes:
         conditions = {c['type']: c['status'] for c in node.get('status', {}).get('conditions', [])}
-        if conditions.get('Ready') != 'True' or node.get('spec', {}).get('unschedulable', False):
-            raise ValueError(f"Node {node['metadata']['name']} is not Ready and schedulable")
+        if conditions.get('Ready') != 'True':
+            raise ValueError(f"Node {node['metadata']['name']} is not Ready")
         if any(conditions.get(c) != 'False' for c in ('MemoryPressure', 'DiskPressure', 'PIDPressure')):
             raise ValueError(f"Node {node['metadata']['name']} has pressure or missing conditions")
 
@@ -90,13 +108,14 @@ def preflight(node, config, pods, stats):
     pod_stats = next(c for c in stats['node']['systemContainers'] if c['name'] == 'pods')
     if pod_stats['memory']['workingSetBytes'] > projected['memory']:
         raise ValueError('Current pod memory usage exceeds projected allocatable')
-    if stats['node']['memory']['availableBytes'] <= quantity(config['evictionHard']['memory.available']):
+    memory_buffer = threshold_value(config['evictionHard']['memory.available'], quantity(node['status']['capacity']['memory']))
+    if stats['node']['memory']['availableBytes'] <= memory_buffer:
         raise ValueError('Current available memory is below the proposed eviction buffer')
     for prefix, fs in [('nodefs', stats['node']['fs']), ('imagefs', stats['node']['runtime']['imageFs'])]:
         for signal, available, capacity in [('available', 'availableBytes', 'capacityBytes'),
                                             ('inodesFree', 'inodesFree', 'inodes')]:
-            threshold = Decimal(config['evictionHard'][f'{prefix}.{signal}'][:-1]) / 100
-            if fs[available] <= Decimal(fs[capacity]) * threshold:
+            threshold = threshold_value(config['evictionHard'][f'{prefix}.{signal}'], fs[capacity])
+            if fs[available] <= threshold:
                 raise ValueError(f'{prefix}.{signal} is below the proposed eviction threshold')
     return projected
 

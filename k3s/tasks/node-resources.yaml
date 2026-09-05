@@ -1,26 +1,13 @@
 ---
-- name: Require a single server and a serial resource rollout
+- name: Require serial execution for the resource rollout
   ansible.builtin.assert:
     that:
-      - groups.get('k3s_master', []) | length == 1
-      - groups.get('k3s_master', []) | intersect(groups.get('k3s_workers', [])) | length == 0
       - ansible_play_batch | length == 1
       - not ansible_check_mode
     fail_msg: >-
-      Use one server, disjoint worker/server groups, and one host per batch.
+      Use one host per batch.
       Review with --syntax-check and --list-hosts; --check cannot verify an
       effective kubelet configuration after restart.
-
-- name: Require a single-worker canary before broader rollout
-  ansible.builtin.assert:
-    that:
-      - >-
-        (k3s_resource_role == 'worker' and ansible_play_hosts_all | length == 1)
-        or (k3s_node_resources_canary_verified | default(false) | bool)
-    fail_msg: >-
-      Start with --limit <worker-alias>. After observing its scheduled k6 run,
-      backup, and node pressure, set k3s_node_resources_canary_verified=true
-      for the remaining workers and server.
 
 - name: Read the installed K3s version
   ansible.builtin.command: /usr/local/bin/k3s --version
@@ -36,8 +23,12 @@
 
 - name: Select the reviewed profile and Kubernetes node name
   ansible.builtin.set_fact:
-    node_resources_profile: "{{ k3s_node_resource_profile | default(k3s_node_resource_profiles[k3s_resource_role]) }}"
+    node_resources_profile: "{{ k3s_node_resource_profile }}"
     node_resources_name: "{{ k3s_node_name | default(ansible_facts.hostname) }}"
+    node_resources_api_host: >-
+      {{ k3s_node_resources_api_host | default(
+        ((groups['k3s_master'] | difference([inventory_hostname])) +
+         groups['k3s_master']) | first) }}
 
 - name: Build the managed kubelet configuration
   ansible.builtin.set_fact:
@@ -54,7 +45,7 @@
       {{ playbook_dir }}/scripts/verify-node-resources.py preflight
       {{ node_resources_name | quote }} {{ node_resources_config | to_json | quote }}
     executable: /usr/bin/python3
-  delegate_to: "{{ groups['k3s_master'][0] }}"
+  delegate_to: "{{ node_resources_api_host }}"
   changed_when: false
 
 - name: Create the K3s kubelet drop-in directory
@@ -87,7 +78,7 @@
       {{ playbook_dir }}/scripts/verify-node-resources.py verify
       {{ node_resources_name | quote }} {{ node_resources_config | to_json | quote }}
     executable: /usr/bin/python3
-  delegate_to: "{{ groups['k3s_master'][0] }}"
+  delegate_to: "{{ node_resources_api_host }}"
   register: node_resources_verified
   changed_when: false
   retries: 60
