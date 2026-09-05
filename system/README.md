@@ -118,9 +118,9 @@ ansible-playbook system/system-info.yaml \
 
 ## Apply Updates
 
-`updates.yaml` applies Debian-family package upgrades to `managed_hosts` in
-parallel by default. It reports a required reboot but does not reboot by
-default.
+`updates.yaml` applies Debian-family package upgrades to `managed_hosts` one
+host at a time and stops the play on failure. It reports a required reboot but
+does not reboot by default.
 
 ```sh
 ansible-playbook system/updates.yaml --limit <host-alias>
@@ -132,10 +132,10 @@ To target a host or group outside `managed_hosts`, override `target_hosts`:
 ansible-playbook system/updates.yaml -e 'target_hosts=<host-alias-or-group>'
 ```
 
-For a rolling update, process one host at a time:
+To update a larger batch at a time, override `update_batch_size`:
 
 ```sh
-ansible-playbook system/updates.yaml -e 'update_batch_size=1'
+ansible-playbook system/updates.yaml -e 'update_batch_size=2'
 ```
 
 To apply updates and reboot the selected host when required:
@@ -146,4 +146,4 @@ ansible-playbook system/updates.yaml --limit <host-alias> \
 ```
 
 With automatic reboots enabled, every host in the active batch can reboot at
-the same time. Use `update_batch_size=1` for a rolling reboot.
+the same time. Keep the default batch size of one for a rolling reboot.
