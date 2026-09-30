@@ -152,33 +152,18 @@ ansible-playbook k3s/firewall.yaml
 ```
 
 The default `vxlan` backend allows TCP 6443 to servers, TCP 10250 between
-nodes, and UDP 8472 between nodes. Monitoring rules also allow TCP 9100 for
-node-exporter and TCP 12345 for Alloy peers, restricted to inventory node
-addresses. Host-networked Alloy collectors need both ports to share scrape
-ownership and reach exporters on other nodes.
-
-For an existing cluster with UFW installed, restore exporter access before
-Alloy peering. Check each phase before applying it:
+nodes, and UDP 8472 between nodes. Monitoring rules allow TCP 9100 and 12345
+only from inventory node addresses. Restore exporter access before Alloy
+peering, checking each phase with `--check --diff` first:
 
 ```sh
-ansible-playbook k3s/firewall.yaml --tags monitoring-node-exporter --check --diff
-ansible-playbook k3s/firewall.yaml --tags monitoring-node-exporter --limit k3
 ansible-playbook k3s/firewall.yaml --tags monitoring-node-exporter
-ansible-playbook k3s/firewall.yaml --tags monitoring-alloy-cluster --check --diff
 ansible-playbook k3s/firewall.yaml --tags monitoring-alloy-cluster
 ```
 
-The exporter command limited to `k3` is an example canary; choose a worker
-from your inventory. Verify cross-node exporter HTTP access before enabling
-peering. After convergence, every collector should see the full cluster,
-each scrape target should have one active owner, and raw target metrics
-should arrive once per configured interval. Check alert evaluations and
-remote-write errors before comparing usage through a load-test cycle.
-
-UFW rules are additive. Reverting source alone does not remove installed
-rules. To roll back, use `community.general.ufw` with `delete: true` and the
-same rule, protocol, port, and source. Remove only the added rules; keep
-exporter access if only peer recovery needs rollback.
+Verify peer membership, scrape health, and alert evaluations afterward.
+Rollback requires deleting the added UFW rules with matching port/source;
+reverting source alone does not remove them.
 
 For a WireGuard-native Flannel backend:
 
