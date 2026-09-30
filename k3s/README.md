@@ -152,20 +152,7 @@ ansible-playbook k3s/firewall.yaml
 ```
 
 The default `vxlan` backend allows TCP 6443 to servers, TCP 10250 between
-nodes, and UDP 8472 between nodes. Monitoring rules allow TCP 9100 and 12345
-only from inventory node addresses. Restore exporter access before Alloy
-peering, checking each phase with `--check --diff` first:
-
-```sh
-ansible-playbook k3s/firewall.yaml --tags monitoring-node-exporter
-ansible-playbook k3s/firewall.yaml --tags monitoring-alloy-cluster
-```
-
-Verify peer membership, scrape health, and alert evaluations afterward.
-Rollback requires deleting the added UFW rules with matching port/source;
-reverting source alone does not remove them.
-
-For a WireGuard-native Flannel backend:
+nodes, and UDP 8472 between nodes. For a WireGuard-native Flannel backend:
 
 ```sh
 ansible-playbook k3s/firewall.yaml \
