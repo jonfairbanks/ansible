@@ -35,6 +35,24 @@
           [hostvars[item].ansible_host | default(item)] }}
       loop: "{{ groups['k3s'] }}"
 
+    - name: Allow node-exporter metrics between K3s nodes
+      community.general.ufw:
+        rule: allow
+        proto: tcp
+        port: '9100'
+        from_ip: "{{ item }}"
+        comment: K3s node-exporter metrics
+      loop: "{{ k3s_node_addresses }}"
+
+    - name: Allow Alloy peer traffic between K3s nodes
+      community.general.ufw:
+        rule: allow
+        proto: tcp
+        port: '12345'
+        from_ip: "{{ item }}"
+        comment: K3s Alloy peers
+      loop: "{{ k3s_node_addresses }}"
+
     - name: Allow Kubelet traffic between K3s nodes
       community.general.ufw:
         rule: allow
