@@ -9,6 +9,7 @@
   serial: 1
   vars_files:
     - versions.yaml
+    - memory-safety.yaml
   vars:
     k3s_install_script_url: https://get.k3s.io
     k3s_install_script_path: /tmp/k3s-install.sh
@@ -58,11 +59,13 @@
       when: traefik_dashboard_enabled | bool
 
     - name: Check for the K3s node token
+      tags: kubelet-config
       ansible.builtin.stat:
         path: /var/lib/rancher/k3s/server/node-token
       register: k3s_node_token_file
 
     - name: Check for an existing K3s server installation
+      tags: kubelet-config
       ansible.builtin.stat:
         path: /usr/local/bin/k3s
       register: k3s_server_binary
@@ -77,6 +80,7 @@
       when: k3s_server_binary.stat.exists
 
     - name: Require the node token for an existing K3s server
+      tags: kubelet-config
       ansible.builtin.assert:
         that:
           - not k3s_server_binary.stat.exists or k3s_node_token_file.stat.exists
@@ -84,7 +88,17 @@
           The K3s binary exists but its node token is missing. Restore the server
           token before using this playbook so existing agents are not disrupted.
 
+    - name: Require an existing server for a scoped configuration run
+      tags: kubelet-config
+      ansible.builtin.assert:
+        that:
+          - k3s_server_binary.stat.exists
+          - k3s_node_token_file.stat.exists
+        fail_msg: The kubelet-config tag requires an existing K3s server and token.
+      when: "'kubelet-config' in ansible_run_tags"
+
     - name: Read the existing K3s node token
+      tags: kubelet-config
       ansible.builtin.slurp:
         src: /var/lib/rancher/k3s/server/node-token
       register: existing_k3s_node_token
@@ -92,6 +106,7 @@
       no_log: true
 
     - name: Use the existing K3s node token
+      tags: kubelet-config
       ansible.builtin.set_fact:
         k3s_server_token: "{{ existing_k3s_node_token.content | b64decode | trim }}"
       when: k3s_node_token_file.stat.exists
@@ -106,6 +121,7 @@
 
   tasks:
     - name: Create the K3s server configuration directory
+      tags: kubelet-config
       ansible.builtin.file:
         path: /etc/rancher/k3s
         state: directory
@@ -114,7 +130,9 @@
         mode: '0700'
 
     - name: Configure the K3s server
+      tags: kubelet-config
       ansible.builtin.copy:
+        backup: true
         dest: /etc/rancher/k3s/config.yaml
         owner: root
         group: root
@@ -122,8 +140,8 @@
         content: |
           token: "{{ k3s_server_token }}"
           write-kubeconfig-mode: "0600"
-          {% if k3s_kubelet_args | default([]) %}
-          {{ {'kubelet-arg': k3s_kubelet_args} | to_nice_yaml }}
+          {% if k3s_kubelet_args | default(k3s_default_kubelet_args) %}
+          {{ {'kubelet-arg': k3s_kubelet_args | default(k3s_default_kubelet_args)} | to_nice_yaml }}
           {% endif %}
       no_log: true
       notify: Restart K3s server
@@ -192,9 +210,11 @@
                   externalTrafficPolicy: Local
 
     - name: Apply K3s server configuration changes
+      tags: kubelet-config
       ansible.builtin.meta: flush_handlers
 
     - name: Wait for the K3s server API
+      tags: kubelet-config
       ansible.builtin.wait_for:
         host: 127.0.0.1
         port: 6443
@@ -202,7 +222,20 @@
         timeout: 120
 
     - name: Verify the K3s server service is active
+      tags: kubelet-config
       ansible.builtin.command: systemctl is-active k3s
+      changed_when: false
+
+    - name: Wait for the K3s server node to become ready
+      tags: kubelet-config
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - wait
+          - --for=condition=Ready
+          - "node/{{ k3s_node_name | default(ansible_facts['hostname']) }}"
+          - --timeout=180s
       changed_when: false
 
     - name: Wait for Traefik to preserve client source addresses
@@ -441,6 +474,7 @@
   serial: 1
   vars_files:
     - versions.yaml
+    - memory-safety.yaml
   vars:
     k3s_install_script_url: https://get.k3s.io
     k3s_install_script_path: /tmp/k3s-install.sh
@@ -518,8 +552,8 @@
         content: |
           server: "{{ k3s_server_url }}"
           token: "{{ k3s_join_token }}"
-          {% if k3s_kubelet_args | default([]) %}
-          {{ {'kubelet-arg': k3s_kubelet_args} | to_nice_yaml }}
+          {% if k3s_kubelet_args | default(k3s_default_kubelet_args) %}
+          {{ {'kubelet-arg': k3s_kubelet_args | default(k3s_default_kubelet_args)} | to_nice_yaml }}
           {% endif %}
       no_log: true
       notify: Restart K3s agent

@@ -1,4 +1,4 @@
 ---
-# Opt in on one worker with --limit and --tags kubelet-config.
+# Compatibility with the original k3 trial command. Normal runs use the same map.
 k3s_kubelet_args:
   - "eviction-hard=memory.available<100Mi,imagefs.available<5%,nodefs.available<5%"
