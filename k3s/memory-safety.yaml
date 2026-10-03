@@ -1,0 +1,4 @@
+---
+# Normal runs keep the tested cutoff. Inventory k3s_kubelet_args can override it.
+k3s_default_kubelet_args:
+  - "eviction-hard=memory.available<100Mi,imagefs.available<5%,nodefs.available<5%"

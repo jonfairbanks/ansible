@@ -81,6 +81,73 @@ To label existing workers without rerunning installation tasks:
 ansible-playbook k3s/k3s.yaml --tags node-labels
 ```
 
+### Optional Kubelet Resource Settings
+
+Set `k3s_kubelet_args` in inventory host or group variables to pass native
+kubelet arguments through the existing server/agent configuration. Choose
+reservations from measurements of your own nodes. The playbook supplies only
+the memory safety eviction cutoff described below.
+Replace the placeholders below before use:
+
+```yaml
+k3s_kubelet_args:
+  - "system-reserved=cpu=<cpu>,memory=<memory>"
+  - "kube-reserved=cpu=<cpu>,memory=<memory>"
+```
+
+The list also accepts `eviction-hard=...`. Specify the complete set of eviction
+thresholds you intend to retain; omitted thresholds can be reset to zero.
+See [Kubernetes node reservations](https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/)
+for sizing and eviction behavior, and [K3s configuration](https://docs.k3s.io/installation/configuration#kubelet-configuration-files)
+for supported options and precedence. Avoid also setting `--kubelet-arg` in the
+service command line, which overrides the list in the configuration file.
+
+Run the existing playbook with `--limit <inventory-host>` on a representative
+node first. This runs its normal configuration and version reconciliation tasks.
+Check the effective kubelet configuration, node allocatable resources, and
+workload behavior before applying it more broadly. Configuration changes use
+the existing K3s restart handlers and serial execution. Leaving the variable
+unset uses the default memory safety cutoff. Setting it to `[]` removes managed
+arguments. An explicit list replaces the default map,
+so retain all eviction thresholds you need when adding reservations.
+
+### Memory Safety Cutoff
+
+Both server and worker plays load `memory-safety.yaml` by default. It sets a
+hard eviction threshold at 100Mi of kubelet `memory.available`, retaining the
+existing K3s disk thresholds at 5%. It adds no CPU or memory reservations and
+sets no host service limits. Scheduler memory allocatable falls by 100Mi.
+Below the threshold, the kubelet can immediately evict pods; this does not
+guarantee protection from a rapid OOM. Normal playbook runs retain this policy.
+Inventory or extra-variable `k3s_kubelet_args` still overrides the default list.
+
+The cutoff was first tested on worker `k3`. The `kubelet-config` tag reconciles
+only configuration and readiness checks, using the existing restart handler.
+It skips installation, node labels, Traefik changes, and kubeconfig export.
+Apply one node at a time, checking workers before the sole control-plane node:
+
+```shell
+ansible-playbook k3s/k3s.yaml --limit k1 --tags kubelet-config
+```
+
+Before applying, verify that the existing configuration has no unrelated
+settings and service arguments do not override kubelet settings. Check that
+systemd uses `KillMode=process` and has no `ExecStop` command that stops pods.
+Config copies back up the root-only file. Rollback restores that exact backup
+and restarts only the affected K3s service. Do not drain nodes or run
+`k3s-killall.sh`. Restarting the sole server briefly interrupts its API.
+API-dependent controllers can restart during that interruption. The process
+restart preserves pod objects but does not guarantee every container remains
+running. Verify container restart counts after recovery.
+
+Verify effective kubelet configuration, the 100Mi allocatable deduction, node
+Ready and pressure conditions, pod UIDs and restart counts, Vault readiness,
+and Longhorn health after each restart. Repeat the tagged command to check
+idempotence. No forced low-memory test is required. The original
+`worker-memory-safety.yaml` remains compatible with the trial command; it is no
+longer needed for ordinary runs to retain the cutoff.
+
+
 ## Traefik Dashboard
 
 `k3s.yaml` can expose a Basic Auth-protected Traefik dashboard at
