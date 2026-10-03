@@ -183,7 +183,7 @@
               resources:
                 requests:
                   cpu: 100m
-                  memory: 192Mi
+                  memory: 200Mi
               service:
                 spec:
                   externalTrafficPolicy: Local
