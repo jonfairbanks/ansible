@@ -463,6 +463,7 @@
         fail_msg: Set k3s_server_url to the server API URL, for example https://192.168.1.10:6443.
 
     - name: Read the K3s node token from the server
+      tags: kubelet-config
       ansible.builtin.slurp:
         src: /var/lib/rancher/k3s/server/node-token
       delegate_to: "{{ groups['k3s_master'][0] }}"
@@ -470,6 +471,7 @@
       no_log: true
 
     - name: Set the worker join token
+      tags: kubelet-config
       ansible.builtin.set_fact:
         k3s_join_token: "{{ k3s_node_token.content | b64decode | trim }}"
       no_log: true
@@ -497,6 +499,7 @@
         timeout: 120
 
     - name: Create the K3s agent configuration directory
+      tags: kubelet-config
       ansible.builtin.file:
         path: /etc/rancher/k3s
         state: directory
@@ -505,8 +508,10 @@
         mode: '0700'
 
     - name: Configure the K3s agent
+      tags: kubelet-config
       ansible.builtin.copy:
         dest: /etc/rancher/k3s/config.yaml
+        backup: true
         owner: root
         group: root
         mode: '0600'
@@ -552,13 +557,16 @@
         '^k3s version ' ~ (k3s_version | regex_escape) ~ '(\s|$)'))
 
     - name: Apply K3s agent configuration changes
+      tags: kubelet-config
       ansible.builtin.meta: flush_handlers
 
     - name: Verify the K3s agent service is active
+      tags: kubelet-config
       ansible.builtin.command: systemctl is-active k3s-agent
       changed_when: false
 
     - name: Wait for the worker node to register with the server
+      tags: [node-labels, kubelet-config]
       ansible.builtin.command:
         argv:
           - /usr/local/bin/k3s
@@ -572,9 +580,9 @@
       delay: 2
       until: k3s_worker_node.rc == 0
       delegate_to: "{{ groups['k3s_master'][0] }}"
-      tags: node-labels
 
     - name: Wait for the worker node to become ready
+      tags: [node-labels, kubelet-config]
       ansible.builtin.command:
         argv:
           - /usr/local/bin/k3s
@@ -585,7 +593,6 @@
           - --timeout=180s
       changed_when: false
       delegate_to: "{{ groups['k3s_master'][0] }}"
-      tags: node-labels
 
     - name: Label the registered node as a worker
       ansible.builtin.command:

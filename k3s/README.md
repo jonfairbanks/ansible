@@ -81,7 +81,7 @@ To label existing workers without rerunning installation tasks:
 ansible-playbook k3s/k3s.yaml --tags node-labels
 ```
 
-### Optional kubelet resource settings
+### Optional Kubelet Resource Settings
 
 Set `k3s_kubelet_args` in inventory host or group variables to pass native
 kubelet arguments through the existing server/agent configuration. Choose
@@ -108,6 +108,41 @@ workload behavior before applying it more broadly. Configuration changes use
 the existing K3s restart handlers and serial execution. Leaving the variable
 unset makes no resource changes on an unconfigured node; removing it or setting
 it to `[]` removes previously managed arguments on the next playbook run.
+
+### One-Worker Memory Safety Trial
+
+The opt-in `worker-memory-safety.yaml` sets a hard eviction threshold at 100Mi
+of kubelet `memory.available`, retaining the existing K3s disk thresholds at 5%.
+It adds no CPU or memory reservations, and sets no host service limits. It
+reduces scheduler memory allocatable by 100Mi. Below that threshold, the kubelet
+can immediately evict pods; this does not guarantee protection from a rapid OOM.
+
+The trial was scoped to worker `k3` after checking its memory headroom, pod
+requests, Vault replicas, and Longhorn volumes. The worker-only tag reconciles
+the existing agent configuration and uses its restart handler, without running
+installation or node-label tasks:
+
+```shell
+ansible-playbook k3s/k3s.yaml --limit k3 --tags kubelet-config \
+  -e @k3s/worker-memory-safety.yaml
+```
+
+Before applying, verify that the agent configuration has no unrelated settings
+and that service command-line arguments do not override the kubelet arguments.
+The existing config copy backs up the root-only file on the worker. Rollback
+restores that exact backup and restarts only `k3s-agent`. Do not drain the worker
+or run `k3s-killall.sh` for this trial.
+
+Verify effective kubelet configuration, the 100Mi allocatable deduction, Ready
+and pressure conditions, pod restart counts, Vault readiness, and Longhorn
+health after restart. Repeat the tagged command to check idempotence. No forced
+low-memory test is required.
+
+These settings apply only when this file is explicitly supplied. A later normal
+playbook run without it, and without equivalent host variables, restores the
+original kubelet defaults. Keep supplying the file for the trial worker until
+the trial is accepted or rolled back.
+
 
 ## Traefik Dashboard
 
