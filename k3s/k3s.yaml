@@ -180,6 +180,10 @@
             valuesContent: |-
               deployment:
                 kind: DaemonSet
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 192Mi
               service:
                 spec:
                   externalTrafficPolicy: Local
