@@ -23,7 +23,8 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 CapabilityBoundingSet=
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# libusb needs Netlink for Linux USB device discovery.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 DevicePolicy=closed
 DeviceAllow=char-usb_device rw
 UMask=0077
