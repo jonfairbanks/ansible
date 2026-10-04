@@ -26,7 +26,8 @@ The `blink-kube` user has no login shell. Its root-owned code and runtime live
 under `/opt/blink-kube`. A udev rule grants its group access only to USB devices
 with VID `20a0` and PID `41e5`; it does not grant general USB access.
 The monitor's systemd device filter permits USB bus devices while filesystem
-permissions narrow access to the matching device.
+permissions narrow access to the matching device. Local Netlink sockets remain
+available for libusb device discovery.
 
 A root-only helper uses the existing K3s admin kubeconfig to mint a one-hour
 service-account token every 20 minutes. It atomically writes group-readable
