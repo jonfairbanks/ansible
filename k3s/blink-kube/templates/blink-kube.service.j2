@@ -1,0 +1,32 @@
+[Unit]
+Description=BlinkStick K3s Node Monitor
+Requires=blink-kube-credentials.service
+After=network-online.target k3s.service blink-kube-credentials.service
+Wants=network-online.target
+
+[Service]
+User=blink-kube
+Group=blink-kube
+WorkingDirectory=/opt/blink-kube/source
+ExecStart=/opt/blink-kube/source/.venv/bin/python /opt/blink-kube/source/kube.py
+Environment=KUBECONFIG=/etc/blink-kube/kubeconfig
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+DevicePolicy=closed
+DeviceAllow=char-usb_device rw
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

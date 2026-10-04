@@ -1,0 +1,156 @@
+---
+- name: Install Optional BlinkStick K3s Monitor
+  hosts: k3s_master
+  become: true
+  gather_facts: true
+  vars:
+    blink_kube_enabled: false
+    blink_kube_uv_version: "0.11.16"
+    blink_kube_revision: "4da82087127661ffc1751a2931bf1c2d6157dbda"
+    blink_kube_python_version: "3.13"
+  tasks:
+    - name: Configure BlinkStick Monitor When Enabled
+      when: blink_kube_enabled | bool
+      block:
+        - name: Require Debian-Family Nodes
+          ansible.builtin.assert:
+            that: ansible_facts['os_family'] == 'Debian'
+        - name: Check Existing K3s Server
+          ansible.builtin.stat:
+            path: /etc/rancher/k3s/k3s.yaml
+          register: blink_kube_admin
+        - name: Require Existing K3s Server
+          ansible.builtin.assert:
+            that: blink_kube_admin.stat.exists
+            fail_msg: Install K3s and reconcile the blink-kube GitOps RBAC first.
+        - name: Install Host Runtime Packages
+          ansible.builtin.apt:
+            name: [git, ca-certificates, python3, python3-venv, python3-packaging, libusb-1.0-0]
+            state: present
+            update_cache: true
+            cache_valid_time: 3600
+        - name: Create Monitor Group
+          ansible.builtin.group:
+            name: blink-kube
+            system: true
+        - name: Create Monitor User
+          ansible.builtin.user:
+            name: blink-kube
+            group: blink-kube
+            system: true
+            create_home: false
+            home: /nonexistent
+            shell: /usr/sbin/nologin
+        - name: Create Root-Owned Runtime Directory
+          ansible.builtin.file:
+            path: /opt/blink-kube
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+        - name: Create Private Credential Directory
+          ansible.builtin.file:
+            path: /etc/blink-kube
+            state: directory
+            owner: root
+            group: blink-kube
+            mode: '0750'
+        - name: Install Pinned uv in Its Own Host Python Environment
+          ansible.builtin.pip:
+            name: "uv=={{ blink_kube_uv_version }}"
+            virtualenv: /opt/blink-kube/uv
+            virtualenv_command: /usr/bin/python3 -m venv
+            extra_args: "--only-binary=:all: --index-url https://pypi.org/simple"
+          notify: Restart Blink Monitor
+        - name: Check Out Pinned Blink Source
+          ansible.builtin.git:
+            repo: https://github.com/fairbanksio/Blink.git
+            dest: /opt/blink-kube/source
+            version: "{{ blink_kube_revision }}"
+            force: false
+          register: blink_kube_source
+          notify: Restart Blink Monitor
+        - name: Check Locked Runtime
+          ansible.builtin.stat:
+            path: /opt/blink-kube/source/.venv/bin/python
+          register: blink_kube_runtime
+        - name: Install Managed Python and Locked Dependencies
+          ansible.builtin.command:
+            argv:
+              - /opt/blink-kube/uv/bin/uv
+              - sync
+              - --locked
+              - --no-dev
+              - --python
+              - "{{ blink_kube_python_version }}"
+            chdir: /opt/blink-kube/source
+          environment:
+            UV_PYTHON_INSTALL_DIR: /opt/blink-kube/python
+            UV_CACHE_DIR: /opt/blink-kube/cache
+            UV_PYTHON_PREFERENCE: only-managed
+          when: blink_kube_source.changed or not blink_kube_runtime.stat.exists
+          notify: Restart Blink Monitor
+        - name: Install USB Access Rule
+          ansible.builtin.copy:
+            dest: /etc/udev/rules.d/70-blink-kube.rules
+            content: |
+              SUBSYSTEM=="usb", ATTR{idVendor}=="20a0", ATTR{idProduct}=="41e5", GROUP="blink-kube", MODE="0660"
+            owner: root
+            group: root
+            mode: '0644'
+          notify:
+            - Reload Blink USB Rule
+            - Trigger Blink USB Rule
+        - name: Install Credential Refresher
+          ansible.builtin.copy:
+            src: blink-kube/files/refresh-credentials.py
+            dest: /opt/blink-kube/refresh-credentials.py
+            owner: root
+            group: root
+            mode: '0700'
+          notify: Restart Blink Monitor
+        - name: Install Systemd Units
+          ansible.builtin.template:
+            src: "blink-kube/templates/{{ item }}.j2"
+            dest: "/etc/systemd/system/{{ item }}"
+            owner: root
+            group: root
+            mode: '0644'
+          loop:
+            - blink-kube.service
+            - blink-kube-credentials.service
+            - blink-kube-credentials.timer
+          register: blink_kube_units
+          notify: Restart Blink Monitor
+        - name: Reload Systemd Units
+          ansible.builtin.systemd_service:
+            daemon_reload: true
+          when: blink_kube_units.changed
+        - name: Mint First Short-Lived Credential
+          ansible.builtin.systemd_service:
+            name: blink-kube-credentials.service
+            state: started
+          no_log: true
+        - name: Enable Credential Refresh Timer
+          ansible.builtin.systemd_service:
+            name: blink-kube-credentials.timer
+            enabled: true
+            state: started
+        - name: Flush USB and Service Handlers
+          ansible.builtin.meta: flush_handlers
+        - name: Enable Blink Monitor
+          ansible.builtin.systemd_service:
+            name: blink-kube.service
+            enabled: true
+            state: started
+  handlers:
+    - name: Reload Blink USB Rule
+      ansible.builtin.command:
+        argv: [/usr/bin/udevadm, control, --reload-rules]
+    - name: Trigger Blink USB Rule
+      ansible.builtin.command:
+        argv: [/usr/bin/udevadm, trigger, --subsystem-match=usb, --attr-match=idVendor=20a0, --attr-match=idProduct=41e5]
+    - name: Restart Blink Monitor
+      ansible.builtin.systemd_service:
+        name: blink-kube.service
+        state: restarted
