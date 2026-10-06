@@ -1,0 +1,21 @@
+---
+- name: Create Kubelet Configuration Directory
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure Seven-Day Unused-Image Retention
+  ansible.builtin.copy:
+    dest: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-image-gc.conf
+    backup: true
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      apiVersion: kubelet.config.k8s.io/v1beta1
+      kind: KubeletConfiguration
+      imageMaximumGCAge: 168h
+  notify: "{{ k3s_image_gc_restart_handler }}"

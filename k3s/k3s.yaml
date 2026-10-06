@@ -129,6 +129,12 @@
         group: root
         mode: '0700'
 
+    - name: Configure Kubelet Image Retention
+      tags: kubelet-config
+      ansible.builtin.import_tasks: tasks/image-gc.yaml
+      vars:
+        k3s_image_gc_restart_handler: Restart K3s server
+
     - name: Configure the K3s server
       tags: kubelet-config
       ansible.builtin.copy:
@@ -540,6 +546,12 @@
         owner: root
         group: root
         mode: '0700'
+
+    - name: Configure Kubelet Image Retention
+      tags: kubelet-config
+      ansible.builtin.import_tasks: tasks/image-gc.yaml
+      vars:
+        k3s_image_gc_restart_handler: Restart K3s agent
 
     - name: Configure the K3s agent
       tags: kubelet-config

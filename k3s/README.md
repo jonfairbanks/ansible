@@ -148,6 +148,37 @@ idempotence. No forced low-memory test is required. The original
 longer needed for ordinary runs to retain the cutoff.
 
 
+
+### Unused-Image Retention
+
+Both server and worker plays write a kubelet drop-in at
+`/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-image-gc.conf`:
+
+```yaml
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+imageMaximumGCAge: 168h
+```
+
+Kubelet removes images unused for seven days, even below the disk-usage cleanup
+threshold. Images used by running containers remain protected. Existing disk
+thresholds and eviction settings stay unchanged. Kubelet restarts reset image
+age tracking, so this does not reclaim the old cache immediately.
+
+The drop-in uses [K3s kubelet configuration files](https://docs.k3s.io/installation/configuration#kubelet-configuration-files),
+supported from K3s 1.32. The repository pins K3s 1.36.3.
+See [Kubernetes image garbage collection](https://kubernetes.io/docs/concepts/architecture/garbage-collection/#container-image-lifecycle)
+for retention behavior.
+
+After the PR merges, use the existing `kubelet-config` procedure above to apply
+one worker at a time, then the server. Changes notify the existing service
+restart handler; unchanged files do not trigger a restart. Verify
+`imageMaximumGCAge` is `168h0m0s` in each node's `/configz` response, along with
+node, Vault, and Longhorn health. Repeat the tagged run to check idempotence.
+For rollback, restore the drop-in backup or remove only `10-image-gc.conf` if
+it did not previously exist, then restart the affected K3s service.
+
+
 ## Traefik Dashboard
 
 `k3s.yaml` can expose a Basic Auth-protected Traefik dashboard at
