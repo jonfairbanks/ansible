@@ -7,7 +7,7 @@
     group: root
     mode: '0755'
 
-- name: Configure Seven-Day Unused-Image Retention
+- name: Configure Unused-Image Garbage Collection
   ansible.builtin.copy:
     dest: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-image-gc.conf
     backup: true
@@ -17,5 +17,7 @@
     content: |
       apiVersion: kubelet.config.k8s.io/v1beta1
       kind: KubeletConfiguration
+      imageGCHighThresholdPercent: 70
+      imageGCLowThresholdPercent: 65
       imageMaximumGCAge: 168h
   notify: "{{ k3s_image_gc_restart_handler }}"
