@@ -149,7 +149,7 @@ longer needed for ordinary runs to retain the cutoff.
 
 
 
-### Unused-Image Retention
+### Unused-Image Garbage Collection
 
 Both server and worker plays write a kubelet drop-in at
 `/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-image-gc.conf`:
@@ -157,13 +157,26 @@ Both server and worker plays write a kubelet drop-in at
 ```yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
+imageGCHighThresholdPercent: 70
+imageGCLowThresholdPercent: 65
 imageMaximumGCAge: 168h
 ```
 
-Kubelet removes images unused for seven days, even below the disk-usage cleanup
-threshold. Images used by running containers remain protected. Existing disk
-thresholds and eviction settings stay unchanged. Kubelet restarts reset image
-age tracking, so this does not reclaim the old cache immediately.
+Kubelet checks unused images every five minutes. Above 70% usage on the image
+filesystem, it removes the oldest unused images and tries to reach 65%. This
+starts cleanup earlier than the default 85%/80% thresholds. It can remove unused
+images before seven days under pressure; the seven-day cutoff also cleans up
+unused images below the usage threshold. Kubelet restarts reset age tracking,
+so age-based cleanup waits another seven days after a restart.
+
+Running-container images and runtime-pinned images remain protected. The
+default two-minute minimum image age and pod eviction settings stay unchanged.
+This policy removes image cache only. It does not delete PVC data, Longhorn
+replicas, snapshots, or model files. A later workload start may need to pull an
+image again. If other data fills the shared filesystem or too few unused images
+remain, image cleanup cannot guarantee the 65% target. Use kubelet imagefs
+available/capacity metrics to assess this policy, rather than image-cache bytes
+alone. Do not add external `ctr` or `crictl` pruning jobs.
 
 The drop-in uses [K3s kubelet configuration files](https://docs.k3s.io/installation/configuration#kubelet-configuration-files),
 supported from K3s 1.32. The repository pins K3s 1.36.3.
@@ -173,6 +186,7 @@ for retention behavior.
 After the PR merges, use the existing `kubelet-config` procedure above to apply
 one worker at a time, then the server. Changes notify the existing service
 restart handler; unchanged files do not trigger a restart. Verify
+`imageGCHighThresholdPercent` is `70`, `imageGCLowThresholdPercent` is `65`, and
 `imageMaximumGCAge` is `168h0m0s` in each node's `/configz` response, along with
 node, Vault, and Longhorn health. Repeat the tagged run to check idempotence.
 For rollback, restore the drop-in backup or remove only `10-image-gc.conf` if
