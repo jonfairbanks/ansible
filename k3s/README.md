@@ -193,6 +193,34 @@ For rollback, restore the drop-in backup or remove only `10-image-gc.conf` if
 it did not previously exist, then restart the affected K3s service.
 
 
+## Kubernetes Event Retention
+
+The server retains Kubernetes events for 24 hours through
+`/etc/rancher/k3s/config.yaml.d/10-event-retention.yaml`. The drop-in appends
+`event-ttl=24h` to the API-server arguments without changing the base
+configuration or token. Expired events cannot be recovered.
+
+Apply only this setting to an existing server:
+
+```sh
+ansible-playbook k3s/k3s.yaml --limit k3s_master --tags event-retention --check --diff
+ansible-playbook k3s/k3s.yaml --limit k3s_master --tags event-retention
+```
+
+A changed drop-in restarts the single K3s server, briefly interrupting the API.
+The play waits for API readiness and the server node to become Ready. Workers
+are not changed. An unchanged rerun does not restart the server.
+
+Verify the latest server startup log includes `--event-ttl=24h` and check:
+
+```sh
+kubectl get --raw /readyz
+kubectl get nodes
+```
+
+To restore one-hour retention, change the drop-in's value to `event-ttl=1h` in
+Git and rerun the same tag. Changes to an existing drop-in also create a backup.
+
 ## Traefik Dashboard
 
 `k3s.yaml` can expose a Basic Auth-protected Traefik dashboard at
