@@ -44,6 +44,26 @@ The exported file grants cluster-admin access. Keep it private and use it with:
 kubectl get nodes
 ```
 
+## Traefik Service Aliases
+
+The Ansible-managed K3s `HelmChartConfig` enables ExternalName backends for
+standard Ingress resources. This lets app-local ingresses use a Service alias
+for the shared KEDA HTTP interceptor. The interceptor still handles cold
+requests and wakes the backend. Cross-namespace CRD access stays disabled.
+
+Roll out this prerequisite before moving the app ingresses in `cluster-state`.
+The `traefik-config` tag updates only the packaged Traefik config, waits for
+the alias-support argument, and checks the DaemonSet rollout. It preserves
+DaemonSet mode, resource requests, and the Local traffic policy.
+
+```sh
+ansible-playbook k3s/k3s.yaml --limit k3s_master --tags traefik-config --check --diff
+ansible-playbook k3s/k3s.yaml --limit k3s_master --tags traefik-config
+```
+
+K3s and Helm reconcile the host manifest; Argo CD must not also manage the
+same `HelmChartConfig`.
+
 ## `k3s.yaml`
 
 ```sh
