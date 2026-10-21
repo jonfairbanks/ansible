@@ -203,7 +203,8 @@
         group: root
         mode: '0755'
 
-    - name: Configure Traefik to preserve client source addresses
+    - name: Configure Traefik Routing
+      tags: traefik-config
       ansible.builtin.copy:
         dest: /var/lib/rancher/k3s/server/manifests/k3s-traefik-config.yaml
         owner: root
@@ -216,9 +217,13 @@
             name: traefik
             namespace: kube-system
           spec:
+            failurePolicy: reinstall
             valuesContent: |-
               deployment:
                 kind: DaemonSet
+              providers:
+                kubernetesIngress:
+                  allowExternalNameServices: true
               resources:
                 requests:
                   cpu: 100m
@@ -226,6 +231,43 @@
               service:
                 spec:
                   externalTrafficPolicy: Local
+
+    - name: Wait for Traefik Service Alias Support
+      tags: traefik-config
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - --namespace
+          - kube-system
+          - get
+          - daemonset
+          - traefik
+          - --output=jsonpath={.spec.template.spec.containers[0].args}
+      register: k3s_traefik_alias_args
+      changed_when: false
+      retries: 90
+      delay: 2
+      until: >-
+        k3s_traefik_alias_args.rc == 0 and
+        '--providers.kubernetesingress.allowExternalNameServices=true' in
+        k3s_traefik_alias_args.stdout
+      when: not ansible_check_mode
+
+    - name: Wait for the Traefik Routing Rollout
+      tags: traefik-config
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - --namespace
+          - kube-system
+          - rollout
+          - status
+          - daemonset/traefik
+          - --timeout=180s
+      changed_when: false
+      when: not ansible_check_mode
 
     - name: Apply K3s server configuration changes
       tags: [kubelet-config, event-retention]
